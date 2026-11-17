@@ -8,15 +8,15 @@
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
   var docPath = arg('galley_doc', ''), doc = docPath ? app.open(File(docPath)) : app.activeDocument;
   var OUT = Folder(arg('galley_out', doc.filePath)), exportIt = arg('galley_export', '1') == '1';
-  doc.viewPreferences.horizontalMeasurementUnits = MeasurementUnits.MILLIMETERS;
-  doc.viewPreferences.verticalMeasurementUnits = MeasurementUnits.MILLIMETERS;
+  // measure in mm through the script's own units: the document and its undo history are never touched
+  var SMU = app.scriptPreferences.measurementUnit; app.scriptPreferences.measurementUnit = MeasurementUnits.MILLIMETERS;
   doc.recompose();
   var PW = doc.documentPreferences.pageWidth, PH = doc.documentPreferences.pageHeight, BL = doc.documentPreferences.documentBleedTopOffset;
   var errors = [], warns = [], checks = { overset: 0, split_boxes: 0, stranded_headings: 0, off_page: 0, links: 0, empty_pages: 0 };
   function pgName(o) { try { return o.parentPage ? o.parentPage.name : '?'; } catch (e) { return '?'; } }
   function E(check, page, msg) { errors.push({ check: check, page: String(page), msg: msg }); checks[check] = (checks[check] || 0) + 1; }
   function Wn(check, page, msg) { warns.push({ check: check, page: String(page), msg: msg }); }
-  function esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n\t]/g, ' '); }
+  function esc(s) { return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\x00-\x1f﻿]/g, ' '); }
   function clip(s) { s = String(s).replace(/[\r\n]+/g, ' '); return s.length > 48 ? s.substr(0, 48) + '...' : s; }
 
   // 1. overset text (stories and table cells)
@@ -33,14 +33,17 @@
   function pageOfText(p) { var f = frameOf(p); return f && f.parentPage ? f.parentPage.name : '?'; }
 
   // 2. boxes split across frames (box ranges come from the build; otherwise found from style names)
+  // Galley builds keep the ranges on the document; text flowed into a designer's file keeps them on its story
   var boxes = [];
-  try { boxes = eval('(' + doc.extractLabel('galley_boxes') + ')') || []; } catch (e) { boxes = []; }
-  for (i = 0; i < boxes.length && main; i++) {
-    var bx = boxes[i];
+  try { var db = eval('(' + doc.extractLabel('galley_boxes') + ')') || []; for (i = 0; i < db.length; i++) { db[i].st = main; boxes.push(db[i]); } } catch (e) {}
+  for (var si = 0; si < stories.length; si++) { var lb = stories[si].extractLabel('galley_boxes'); if (!lb) continue;
+    try { var sb = eval('(' + lb + ')'); for (i = 0; i < sb.length; i++) { sb[i].st = stories[si]; boxes.push(sb[i]); } } catch (e) {} }
+  for (i = 0; i < boxes.length; i++) {
+    var bx = boxes[i], bs = bx.st; if (!bs) continue;
     try {
-      var p0 = main.characters[bx.s].paragraphs[0], p1 = main.characters[Math.max(bx.s, bx.e - 1)].paragraphs[0];
+      var p0 = bs.characters[bx.s].paragraphs[0], p1 = bs.characters[Math.max(bx.s, bx.e - 1)].paragraphs[0];
       var f0 = frameOf(p0), f1 = frameOf(p1);
-      if (bx.kind == 'Table') { var tb = main.characters[bx.s].tables.length ? main.characters[bx.s].tables[0] : null;
+      if (bx.kind == 'Table') { var tb = bs.characters[bx.s].tables.length ? bs.characters[bx.s].tables[0] : null;
         if (tb) { f0 = tb.cells[0].insertionPoints[0].parentTextFrames[0]; f1 = tb.cells[-1].insertionPoints[0].parentTextFrames[0]; } }
       if (f0 && f1 && f0.id != f1.id) {
         if (bx.continues) Wn('split_boxes', f0.parentPage.name, bx.kind + ' continues onto page ' + f1.parentPage.name + ' (longer than a page; breaks only between questions)');
@@ -50,20 +53,29 @@
   }
   // 3. stranded headings: a heading style that is the last paragraph of a frame while the story continues
   var HEADS = /^(H2|H3|Example Head|Activity Head|Exercise Head|Objectives Head|Chapter Title)$/;
-  if (main) {
-    var tc = main.textContainers;
+  // a document styled by the designer: the copilot's style mapping says which of their styles are headings
+  var HEADNAMES = {};
+  try { var MAP = eval('(' + doc.extractLabel('galley_map') + ')') || {}; var HR = ['h2', 'h3', 'chapter_title', 'example_head', 'activity_head', 'exercise_head', 'objectives_head'];
+    for (var hr = 0; hr < HR.length; hr++) if (MAP[HR[hr]]) HEADNAMES[MAP[HR[hr]]] = 1; } catch (e) {}
+  function isHead(n) { return HEADS.test(n) || HEADNAMES[n] == 1; }
+  for (var sk = 0; sk < stories.length; sk++) {
+    var tc = stories[sk].textContainers; if (tc.length < 2) continue;
     for (i = 0; i < tc.length - 1; i++) {
       try { var lp = tc[i].paragraphs[-1]; if (!tc[i + 1].characters.length || lp.parentTextFrames.length > 1) continue;
-        if (HEADS.test(lp.appliedParagraphStyle.name)) E('stranded_headings', tc[i].parentPage.name, 'heading at the foot of the page: ' + clip(lp.contents)); } catch (e) {}
+        if (isHead(lp.appliedParagraphStyle.name)) E('stranded_headings', tc[i].parentPage.name, 'heading at the foot of the page: ' + clip(lp.contents)); } catch (e) {}
     }
   }
   // 4. objects off the page: outside the bleed = error; content (text, anchored art) outside the margins = warning
+  var PAGE_RULER = doc.viewPreferences.rulerOrigin == RulerOrigin.PAGE_ORIGIN;
   function inspect(items, page, isMaster) {
     var mp = page.marginPreferences, side = page.side == PageSideOptions.LEFT_HAND;
     var mL = side ? mp.right : mp.left, mR = side ? mp.left : mp.right; // facing pages: left/right = inside/outside
     for (var j = 0; j < items.length; j++) {
       var it = items[j], gb;
       try { gb = it.visibleBounds; } catch (e) { continue; }
+      // measure relative to this page: designer files usually use a spread ruler, so right-hand pages start at x = page width
+      // with page rulers items are already page-relative (page.bounds would still be in spread coordinates)
+      var pb = PAGE_RULER ? [0, 0] : page.bounds; gb = [gb[0] - pb[0], gb[1] - pb[1], gb[2] - pb[0], gb[3] - pb[1]];
       var out = gb[0] < -BL - 0.5 || gb[1] < -BL - 0.5 || gb[2] > PH + BL + 0.5 || gb[3] > PW + BL + 0.5;
       var label = it.constructor.name + (it.hasOwnProperty('contents') && typeof it.contents == 'string' && it.contents ? ' "' + clip(it.contents) + '"' : '');
       var hasContent = (it.hasOwnProperty('contents') && typeof it.contents == 'string' && it.contents != '') || (it.hasOwnProperty('allGraphics') && it.allGraphics.length > 0);
@@ -121,5 +133,6 @@
       antiAlias = true; transparentBackground = false; exportingSpread = false; useDocumentBleeds = false; }
     doc.exportFile(ExportFormat.PNG_FORMAT, File(pv + '/page.png'), false);
   }
+  app.scriptPreferences.measurementUnit = SMU;
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.INTERACT_WITH_ALL;
 })();

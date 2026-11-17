@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galley Copilot</title>
+<style>
+  :root { --bg:#F4F4F2; --panel:#FFFFFF; --ink:#1D2026; --soft:#646973; --line:#E1E1DC; --chip:#ECECE8; --accent:#0E7C86; --accent-ink:#FFFFFF;
+    --ok:#1F8A4C; --warn:#B7791F; --err:#C2410C; --user:#E6F3F4; --code:#F0F0EC; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1E1F22; --panel:#26282C; --ink:#E7E8EA; --soft:#9BA0A8; --line:#373A40; --chip:#31343A;
+    --accent:#3FB6BF; --accent-ink:#0E1416; --ok:#4CC27E; --warn:#E3B04B; --err:#F08060; --user:#1F3437; --code:#2C2F34; color-scheme: dark; } }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.45 "Segoe UI", system-ui, sans-serif; display: flex; flex-direction: column; }
+  button { font: 600 12.5px "Segoe UI", sans-serif; border: 0; border-radius: 6px; padding: 7px 12px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+  button.ghost { background: var(--chip); color: var(--ink); }
+  button.link { background: none; color: var(--accent); padding: 0; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  select, input[type=text], input[type=password], textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0; }
+  header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 9px 12px 0; }
+  .top { display: flex; align-items: center; gap: 8px; }
+  .logo { font: 800 16px/1 Georgia, serif; letter-spacing: -.3px; }
+  .logo span { color: var(--accent); }
+  .conn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #9AA0A6; flex: none; }
+  .dot.on { background: var(--ok); } .dot.busy { background: var(--warn); }
+  .gear { background: none; color: var(--soft); font-size: 16px; padding: 2px 4px; }
+  .sel { margin: 8px 0 0; padding: 7px 9px; background: var(--user); border-radius: 6px; display: flex; gap: 8px; align-items: center; font-size: 12px; }
+  [hidden] { display: none !important; }
+  .sel span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav { display: flex; gap: 2px; margin-top: 8px; }
+  nav button { background: none; color: var(--soft); border-radius: 0; padding: 7px 10px 8px; border-bottom: 2px solid transparent; }
+  nav button.on { color: var(--ink); border-bottom-color: var(--accent); }
+  main { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
+  .tab { display: none; } .tab.on { display: block; }
+  #assist.on { display: flex; flex-direction: column; height: 100%; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; margin-bottom: 10px; }
+  h3 { margin: 0 0 6px; font-size: 13px; }
+  .muted { color: var(--soft); }
+  .small { font-size: 11.5px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; }
+  .chip { background: var(--chip); border-radius: 12px; padding: 2px 8px; font-size: 11.5px; }
+  .chip.click { cursor: pointer; } .chip.click:hover { outline: 1px solid var(--accent); }
+  /* chat */
+  .log { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+  .msg { padding: 8px 10px; border-radius: 8px; max-width: 94%; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { background: var(--user); align-self: flex-end; }
+  .msg.bot { background: var(--panel); border: 1px solid var(--line); }
+  .msg.err { border-color: var(--err); color: var(--err); }
+  .steps { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .steps span { font: 11px Consolas, monospace; background: var(--code); border-radius: 4px; padding: 1px 5px; }
+  .compose { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
+  .compose textarea { resize: none; height: 58px; }
+  .att { display: flex; gap: 4px; flex-wrap: wrap; }
+  .att img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); }
+  /* check */
+  .issue { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); cursor: pointer; }
+  .issue:first-child { border-top: 0; }
+  .issue b { min-width: 34px; font-variant-numeric: tabular-nums; }
+  .sev { width: 4px; border-radius: 2px; flex: none; }
+  .sev.e { background: var(--err); } .sev.w { background: var(--warn); }
+  .pass { color: var(--ok); font-weight: 700; } .fail { color: var(--err); font-weight: 700; }
+  /* mapping */
+  table.map { width: 100%; border-collapse: collapse; }
+  table.map td { padding: 4px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+  table.map td:first-child { padding-right: 8px; width: 46%; }
+  table.map select { width: 100%; }
+  .req { color: var(--err); font-weight: 700; }
+  .conf { font-size: 10.5px; color: var(--soft); }
+  /* references */
+  .drop { border: 2px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; color: var(--soft); }
+  .drop.over { border-color: var(--accent); color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); gap: 6px; margin-top: 8px; }
+  .ref { position: relative; border-radius: 6px; overflow: hidden; border: 2px solid transparent; cursor: pointer; aspect-ratio: 1; background: var(--chip); }
+  .ref img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .ref.on { border-color: var(--accent); }
+  .ref .x { position: absolute; top: 2px; right: 2px; background: #000a; color: #fff; border-radius: 4px; padding: 0 5px; font-size: 11px; display: none; }
+  .ref:hover .x { display: block; }
+  .links a { color: var(--accent); word-break: break-all; }
+  .modal { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+  .modal.on { display: flex; }
+  .modal .card { width: 100%; max-width: 360px; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: s 0.8s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <div class="logo">Gall<span>e</span>y</div>
+    <div class="conn" id="conn"><i class="dot" id="dot"></i><span id="connText">Connecting to InDesign…</span></div>
+    <select id="model" title="Model" style="max-width:150px"></select>
+    <button class="gear" id="gear" title="Settings" aria-label="Settings">⚙</button>
+  </div>
+  <div class="sel" id="sel" hidden><span id="selText"></span><button id="applyAll" class="ghost" title="Make this paragraph's look the style, everywhere">Apply look to all</button></div>
+  <nav>
+    <button class="on" data-tab="assist">Assist</button><button data-tab="check">Check</button><button data-tab="continue">Continue</button><button data-tab="refs">References</button>
+  </nav>
+</header>
+<main>
+  <section class="tab on" id="assist">
+    <div class="log" id="log">
+      <div class="msg bot">Hi. I'm working on the document you have open in InDesign. Ask me to check it, change a style, explain a problem, or continue the book in your styles. Everything I change is one Ctrl+Z.</div>
+    </div>
+    <div class="chips" id="quick" style="margin-bottom:6px">
+      <span class="chip click">Check this document</span><span class="chip click">What styles does this document use?</span><span class="chip click">Make the section headings 2 pt bigger</span>
+    </div>
+    <div class="compose">
+      <div class="att" id="att"></div>
+      <textarea id="input" placeholder="Ask Galley… (Enter to send, Shift+Enter for a new line)"></textarea>
+      <div class="row"><span class="muted small" id="attHint" style="flex:1">Tip: pick references in the References tab to show them to Galley.</span><button id="send">Send</button></div>
+    </div>
+  </section>
+
+  <section class="tab" id="check">
+    <div class="card">
+      <div class="row"><h3 style="flex:1;margin:0">Check this document</h3><button id="runCheck">Run check</button></div>
+      <p class="muted small" style="margin:6px 0 0">Overset text, boxes split over pages, headings stranded at the foot of a page, objects off the page, missing or low-resolution images, empty pages. Click an item to go to its page.</p>
+    </div>
+    <div class="card" id="checkOut" hidden></div>
+  </section>
+
+  <section class="tab" id="continue">
+    <div class="card">
+      <h3>1 · Manuscript</h3>
+      <div class="row"><label class="ghost" style="background:var(--chip);border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer">Choose .docx<input type="file" id="docx" accept=".docx" hidden></label>
+        <button class="ghost" id="useSample">Use sample chapter</button></div>
+      <div id="msOut" class="small" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h3>2 · Your styles</h3>
+      <p class="muted small" style="margin:0 0 6px">Galley matched the roles in the manuscript to the styles in this document. Check them; your choice is saved in the document, so the next chapter needs no setup.</p>
+      <div class="row small" style="margin-bottom:6px">Pages use master <select id="master"></select></div>
+      <table class="map" id="mapTable"><tr><td class="muted">Open a document in InDesign to see its styles.</td></tr></table>
+    </div>
+    <div class="card">
+      <h3>3 · Continue in your style</h3>
+      <p class="muted small" style="margin:0 0 8px">Adds pages after the last page of this document and flows the manuscript into them using your styles, with Galley's keep rules and checks. One Ctrl+Z undoes it all.</p>
+      <button id="flow" disabled>Flow into this document</button>
+      <div id="flowOut" class="small" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="refs">
+    <div class="card">
+      <h3>Reference board</h3>
+      <div class="drop" id="drop">Drop images here (screenshots, Pinterest saves, sample pages)<br><label class="small" style="color:var(--accent);cursor:pointer">or choose files<input type="file" id="refFiles" accept="image/*" multiple hidden></label></div>
+      <div class="grid" id="grid"></div>
+      <div class="row" style="margin-top:8px"><span class="muted small" id="pickHint" style="flex:1">Click images to select them for Galley.</span><button id="askRefs" disabled>Ask Galley about these</button></div>
+    </div>
+    <div class="card">
+      <h3>Boards and links</h3>
+      <div class="row"><input type="text" id="url" placeholder="Paste a Pinterest board or any link" style="flex:1"><button class="ghost" id="addUrl">Add</button></div>
+      <div class="links small" id="links" style="margin-top:8px"></div>
+      <p class="muted small" style="margin:8px 0 0">Links open in your browser. Pinterest doesn't allow its boards inside other apps, so save or screenshot the pins you want and drop them above.</p>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="settings"><div class="card">
+  <h3>Settings</h3>
+  <p class="small muted" style="margin:0 0 8px">Your key stays on this computer (in your user profile, not in the project).</p>
+  <label class="small">Claude API key <span id="keyHint" class="muted"></span></label>
+  <input type="password" id="apiKey" placeholder="sk-ant-…" style="width:100%;margin:4px 0 10px">
+  <div class="row"><button id="saveSettings">Save</button><button class="ghost" id="closeSettings">Close</button><button class="link" id="clearKey" style="margin-left:auto">Remove key</button></div>
+</div></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+async function api(path, body, filename) {
+  const opt = body === undefined ? {} : { method: 'POST', body: filename ? body : JSON.stringify(body), headers: filename ? { 'X-Filename': encodeURIComponent(filename) } : {} };
+  const r = await fetch('/api/c/' + path, opt);
+  return r.json();
+}
+let ST = {}, STATE = {}, history = [], picked = new Set(), mapDirty = false;
+
+// tabs
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === b.dataset.tab));
+});
+function goTab(id) { document.querySelector(`nav button[data-tab="${id}"]`).click(); }
+
+// ---------- live connection to InDesign
+async function poll() {
+  try { ST = await api('status'); } catch (e) { ST = { connected: false, message: 'Galley server is not running.' }; }
+  const dot = $('#dot'); dot.className = 'dot' + (ST.connected ? (ST.busy ? ' busy' : ' on') : '');
+  if (!ST.connected) $('#connText').textContent = ST.message || 'InDesign is not open';
+  else if (ST.busy) $('#connText').textContent = 'InDesign is working…';
+  else if (!ST.docs) $('#connText').textContent = `InDesign ${ST.version.split('.')[0]} · no document open`;
+  else $('#connText').textContent = `${ST.name}${ST.saved ? '' : ' •'} · ${ST.pages} pp`;
+  $('#connText').title = ST.path || '';
+  // selection bar: offer "apply look to all" when a styled paragraph has local changes
+  const s = ST.selection;
+  $('#sel').hidden = !(s && s.style);
+  if (s && s.style) { $('#selText').textContent = `${s.style}${s.overrides ? ' (edited here)' : ''} · p${s.page || '?'}: ${s.text || ''}`;
+    $('#applyAll').disabled = !s.overrides; }
+  if (!ST.busy) renderMapping();
+}
+setInterval(() => { if (!document.hidden) poll(); }, 2500);
+
+// ---------- Assist (chat)
+function addMsg(cls, text, steps) {
+  const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text;
+  if (steps && steps.length) { const s = document.createElement('div'); s.className = 'steps';
+    s.innerHTML = steps.map(x => `<span title="${esc(JSON.stringify(x.input))}">${x.ok ? '✓' : '✗'} ${esc(x.tool)}</span>`).join(''); d.appendChild(s); }
+  $('#log').appendChild(d); $('#log').scrollTop = 1e9; return d;
+}
+async function send(text) {
+  text = (text ?? $('#input').value).trim(); if (!text) return;
+  $('#input').value = ''; addMsg('user', text);
+  const wait = addMsg('bot', ''); wait.innerHTML = '<span class="spin"></span> working in InDesign…';
+  $('#send').disabled = true;
+  const r = await api('chat', { text, history, model: $('#model').value, refs: [...picked] }).catch(e => ({ error: String(e) }));
+  wait.remove(); $('#send').disabled = false;
+  if (r.error) { addMsg('bot err', r.error); if (/API key/.test(r.error)) $('#settings').classList.add('on'); return; }
+  addMsg('bot', r.text || '(done)', r.steps);
+  history.push({ role: 'user', content: text }, { role: 'assistant', content: r.text || '' });
+  poll();
+}
+$('#send').onclick = () => send();
+$('#input').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+document.querySelectorAll('#quick .chip').forEach(c => c.onclick = () => send(c.textContent));
+$('#applyAll').onclick = async () => {
+  const r = await api('apply_all', {});
+  addMsg(r.ok ? 'bot' : 'bot err', r.ok ? `Updated “${r.style}” (${r.changed.join(', ') || 'no differences'}). ${r.paragraphs} paragraphs use it. Ctrl+Z in InDesign undoes this.` : r.error);
+  goTab('assist'); poll();
+};
+
+// ---------- Check
+async function runCheck() {
+  $('#checkOut').hidden = false; $('#checkOut').innerHTML = '<span class="spin"></span> Checking every page…';
+  const r = await api('check', {});
+  if (r.error) { $('#checkOut').innerHTML = `<span class="fail">${esc(r.error)}</span>`; return; }
+  const items = r.errors.map(e => ({ ...e, s: 'e' })).concat(r.warnings.map(w => ({ ...w, s: 'w' })));
+  $('#checkOut').innerHTML = `<div class="row" style="margin-bottom:6px"><b class="${r.passed ? 'pass' : 'fail'}">${r.passed ? 'No problems' : r.errors.length + ' to fix'}</b>
+    <span class="muted small">${r.pages} pages · ${r.warnings.length} notes · ${new Date().toLocaleTimeString()}</span></div>` +
+    (items.length ? items.map(i => `<div class="issue" data-page="${esc(i.page)}"><i class="sev ${i.s}"></i><b>p${esc(i.page)}</b><span>${esc(i.msg)}</span></div>`).join('') : '');
+  document.querySelectorAll('.issue').forEach(el => el.onclick = () => api('goto', { page: el.dataset.page.replace(/^master /, '') }));
+}
+$('#runCheck').onclick = runCheck;
+
+// ---------- Continue in my style
+function renderContent() {
+  const c = STATE.content;
+  if (!c) { $('#msOut').innerHTML = '<span class="muted">No manuscript yet.</span>'; $('#flow').disabled = true; return; }
+  $('#msOut').innerHTML = `<b>${c.meta.chapter_no ? 'Chapter ' + esc(c.meta.chapter_no) + ': ' : ''}${esc(c.meta.chapter_title)}</b> <span class="muted">· ${esc(c.meta.source || '')}</span>
+    <div class="chips" style="margin-top:5px">${Object.entries(c.counts).map(([k, v]) => `<span class="chip">${v} ${esc(k)}</span>`).join('')}</div>
+    <details style="margin-top:6px"><summary class="muted">How Galley read it</summary><pre class="small" style="white-space:pre-wrap;background:var(--code);padding:6px;border-radius:6px">${esc(c.report)}</pre></details>`;
+  $('#flow').disabled = !(ST.connected && ST.docs);
+}
+function currentMapping() {
+  const m = {};
+  document.querySelectorAll('#mapTable select').forEach(s => { if (s.value) m[s.dataset.role] = s.value; });
+  if ($('#master').value) m._master = $('#master').value;
+  return m;
+}
+let lastMapKey = '';
+function renderMapping() {
+  if (!ST.connected || !ST.docs || !ST.suggestion) return;
+  const key = ST.name + '|' + (ST.paragraphStyles || []).join(',') + '|' + ST.mapping;
+  if (key === lastMapKey || mapDirty) return; lastMapKey = key;
+  const opts = (list, val) => '<option value="">— not used —</option>' + list.map(s => `<option ${s === val ? 'selected' : ''}>${esc(s)}</option>`).join('');
+  const row = (r, list) => `<tr><td>${esc(r.label)}${r.required ? ' <span class="req" title="Needed">*</span>' : ''}<div class="conf">${r.source === 'saved' ? 'saved' : r.style ? 'suggested' : 'no match'}</div></td>
+    <td><select data-role="${r.role}">${opts(list, r.style)}</select></td></tr>`;
+  $('#mapTable').innerHTML = ST.suggestion.paragraph.map(r => row(r, ST.paragraphStyles)).join('') +
+    '<tr><td colspan="2" class="muted small" style="padding-top:8px">Character styles (labels inside text)</td></tr>' +
+    ST.suggestion.character.map(r => row(r, ST.characterStyles)).join('');
+  $('#master').innerHTML = '<option value="">same as last page</option>' + (ST.masters || []).map(m => `<option ${ST.savedMapping && ST.savedMapping._master === m ? 'selected' : ''}>${esc(m)}</option>`).join('');
+  document.querySelectorAll('#mapTable select, #master').forEach(s => s.onchange = () => { mapDirty = true; });
+  renderContent();
+}
+async function setManuscript(p) { $('#msOut').innerHTML = '<span class="spin"></span> Reading the manuscript…'; const r = await p;
+  if (r.error) { $('#msOut').innerHTML = `<span class="fail">${esc(r.error)}</span>`; return; } STATE.content = r.content; renderContent(); }
+$('#useSample').onclick = () => setManuscript(api('manuscript?sample=1', {}));
+$('#docx').onchange = e => { const f = e.target.files[0]; if (f) setManuscript(api('manuscript', f, f.name)); };
+$('#flow').onclick = async () => {
+  const m = currentMapping(), need = ['chapter_title', 'h2', 'body'].filter(k => !m[k]);
+  if (need.length) { $('#flowOut').innerHTML = `<span class="fail">Choose a style for: ${need.join(', ')}</span>`; return; }
+  $('#flow').disabled = true; $('#flowOut').innerHTML = '<span class="spin"></span> Flowing the manuscript into your document… InDesign may look busy for a minute.';
+  const r = await api('flow', { mapping: m }); $('#flow').disabled = false; mapDirty = false;
+  if (!r.ok) { $('#flowOut').innerHTML = `<span class="fail">${esc(r.error)}</span>`; return; }
+  const qa = r.qa || {}, fb = Object.entries(r.fallbacks || {});
+  $('#flowOut').innerHTML = `<b class="pass">Done.</b> Added pages ${esc(r.firstPage)}–${esc(r.lastPage)} (${r.pagesAdded}).
+    QA: ${qa.passed ? '<span class="pass">no problems</span>' : `<span class="fail">${(qa.errors || []).length} to fix</span> (see Check)`}.
+    ${fb.length ? `<div class="muted" style="margin-top:4px">No style chosen for ${fb.map(([k, v]) => esc(k)).join(', ')}; Galley used the closest one.</div>` : ''}
+    <div class="muted" style="margin-top:4px">Undo everything: Edit › Undo “Galley: flow manuscript” (Ctrl+Z).</div>`;
+  poll();
+};
+
+// ---------- References
+function renderBoard() {
+  const b = STATE.board || { images: [], links: [] };
+  $('#grid').innerHTML = b.images.map(n => `<div class="ref ${picked.has(n) ? 'on' : ''}" data-n="${esc(n)}"><img src="/refs/${encodeURIComponent(n)}" alt="${esc(n)}"><span class="x" data-del="${esc(n)}">✕</span></div>`).join('');
+  document.querySelectorAll('.ref').forEach(r => r.onclick = e => {
+    if (e.target.dataset.del) { api('refs/delete', { name: e.target.dataset.del }).then(x => { picked.delete(e.target.dataset.del); STATE.board = x; renderBoard(); }); return; }
+    picked.has(r.dataset.n) ? picked.delete(r.dataset.n) : picked.add(r.dataset.n); renderBoard(); });
+  $('#links').innerHTML = b.links.length ? b.links.map(l => `<div class="row" style="margin-bottom:4px"><a href="${esc(l.url)}" target="_blank" rel="noopener" style="flex:1">${esc(l.label)}</a><button class="link" data-rm="${esc(l.url)}">remove</button></div>`).join('') : '<span class="muted">No links yet.</span>';
+  document.querySelectorAll('[data-rm]').forEach(x => x.onclick = async () => { STATE.board = await api('links', { remove: x.dataset.rm }); renderBoard(); });
+  $('#askRefs').disabled = !picked.size;
+  $('#pickHint').textContent = picked.size ? `${picked.size} selected` : 'Click images to select them for Galley.';
+  $('#att').innerHTML = [...picked].map(n => `<img src="/refs/${encodeURIComponent(n)}" alt="" title="${esc(n)}">`).join('');
+  $('#attHint').textContent = picked.size ? `${picked.size} reference${picked.size > 1 ? 's' : ''} attached` : 'Tip: pick references in the References tab to show them to Galley.';
+}
+async function uploadRefs(files) { for (const f of files) if (f.type.startsWith('image/')) STATE.board = await api('refs', f, f.name); renderBoard(); }
+$('#refFiles').onchange = e => uploadRefs(e.target.files);
+const drop = $('#drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => uploadRefs(e.dataTransfer.files));
+$('#addUrl').onclick = async () => { const u = $('#url').value.trim(); if (!u) return; STATE.board = await api('links', { url: u }); $('#url').value = ''; renderBoard(); };
+$('#askRefs').onclick = () => { goTab('assist'); send('Look at these references. Describe the style they share (type, palette, box treatments, spacing) and suggest concrete changes to the paragraph styles in my document to move it towards that look. Don\'t change anything yet.'); };
+
+// ---------- settings + models
+$('#gear').onclick = () => $('#settings').classList.add('on');
+$('#closeSettings').onclick = () => $('#settings').classList.remove('on');
+$('#saveSettings').onclick = async () => { const s = await api('settings', { api_key: $('#apiKey').value }); $('#apiKey').value = ''; applySettings(s); $('#settings').classList.remove('on'); };
+$('#clearKey').onclick = async () => applySettings(await api('settings', { api_key: '' }));
+$('#model').onchange = () => api('settings', { model: $('#model').value });
+function applySettings(s) { $('#keyHint').textContent = s.has_key ? `(saved ${s.key_hint})` : '(not set)'; }
+
+(async function init() {
+  STATE = await api('state');
+  $('#model').innerHTML = STATE.models.map(m => `<option value="${m.id}" ${m.available ? '' : 'disabled'} ${m.id === STATE.settings.model ? 'selected' : ''}>${esc(m.label)}</option>`).join('');
+  applySettings(STATE.settings); renderBoard(); renderContent(); poll();
+})();
+</script>
+</body>
+</html>

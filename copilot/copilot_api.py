@@ -1,0 +1,152 @@
+"""HTTP handlers for the copilot window (served by ui/server.py under /api/c/...).
+
+Each handler returns (status_code, json_body). InDesign work goes through bridge.py; nothing here starts InDesign.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+
+from . import assistant, bridge, mapping, settings
+
+G = bridge.G
+WORK = os.path.join(G, 'work')
+BOARD = os.path.join(WORK, 'refs', 'board')
+LINKS = os.path.join(BOARD, 'links.json')
+IMG_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+
+
+def _content_summary():
+    cj = os.path.join(WORK, 'content.json')
+    if not os.path.exists(cj):
+        return None
+    with open(cj, encoding='utf-8') as f:
+        c = json.load(f)
+    counts = {}
+    for b in c['blocks']:
+        counts[b['type']] = counts.get(b['type'], 0) + 1
+    review = ''
+    rp = os.path.join(WORK, 'ingest_report.txt')
+    if os.path.exists(rp):
+        with open(rp, encoding='utf-8') as f:
+            review = f.read()
+    return {'meta': c['meta'], 'counts': counts, 'report': review, 'updated': os.path.getmtime(cj)}
+
+
+def _board():
+    os.makedirs(BOARD, exist_ok=True)
+    imgs = sorted((f for f in os.listdir(BOARD) if f.lower().endswith(IMG_EXT)), key=lambda f: -os.path.getmtime(os.path.join(BOARD, f)))
+    links = []
+    if os.path.exists(LINKS):
+        with open(LINKS, encoding='utf-8') as f:
+            links = json.load(f)
+    return {'images': imgs, 'links': links}
+
+
+def get(path, q):
+    if path == 'status':
+        st = bridge.status()
+        if st.get('connected') and not st.get('busy') and st.get('docs'):
+            saved = {}
+            try:
+                saved = json.loads(st.get('mapping') or '{}')
+            except ValueError:
+                pass
+            st['suggestion'] = mapping.suggest(st.get('paragraphStyles', []), st.get('characterStyles', []), saved)
+            st['savedMapping'] = saved
+        return 200, st
+    if path == 'state':
+        return 200, {'content': _content_summary(), 'board': _board(), 'settings': settings.public(), 'models': assistant.MODELS}
+    return 404, {'error': 'not found'}
+
+
+def post(path, q, body, filename):
+    data = {}
+    if body and not filename:
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = {}
+    try:
+        if path == 'check':
+            return 200, bridge.check_document()
+        if path == 'goto':
+            return 200, bridge.go_to_page(data.get('page', ''))
+        if path == 'mapping':
+            return 200, bridge.save_mapping(data.get('mapping') or {})
+        if path == 'flow':
+            cj = os.path.join(WORK, 'content.json')
+            if not os.path.exists(cj):
+                return 400, {'error': 'Choose a manuscript first.'}
+            m = data.get('mapping') or {}
+            bridge.save_mapping(m)
+            res = bridge.flow_manuscript(cj, m)
+            if res.get('ok'):
+                res['qa'] = bridge.check_document()
+            return 200, res
+        if path == 'apply_all':
+            return 200, bridge.redefine_style_from_selection()
+        if path == 'restyle':
+            return 200, bridge.update_paragraph_style(data.get('style', ''), data.get('changes') or {})
+        if path == 'manuscript':
+            # a .docx sent from the copilot (or the sample) -> work/content.json
+            if q.get('sample'):
+                src = os.path.join(G, 'samples', 'plants_chapter.docx')
+            else:
+                if not filename.lower().endswith('.docx'):
+                    return 400, {'error': 'Please choose a Word .docx file.'}
+                d = os.path.join(WORK, 'refs', 'manuscript')
+                os.makedirs(d, exist_ok=True)
+                src = os.path.join(d, os.path.basename(filename))
+                with open(src, 'wb') as f:
+                    f.write(body)
+            r = subprocess.run([sys.executable, os.path.join(G, 'ingest', 'ingest.py'), src, WORK], capture_output=True, text=True, timeout=120)
+            if r.returncode:
+                return 500, {'error': 'Could not read the manuscript: ' + (r.stderr or r.stdout)[-400:]}
+            return 200, {'content': _content_summary()}
+        if path == 'refs':
+            if filename:
+                if not filename.lower().endswith(IMG_EXT):
+                    return 400, {'error': 'Images only (PNG, JPG, GIF, WebP).'}
+                os.makedirs(BOARD, exist_ok=True)
+                name = re.sub(r'[^\w.\- ]', '_', os.path.basename(filename))
+                with open(os.path.join(BOARD, name), 'wb') as f:
+                    f.write(body)
+            return 200, _board()
+        if path == 'refs/delete':
+            name = os.path.basename(data.get('name', ''))
+            p = os.path.join(BOARD, name)
+            if name and os.path.isfile(p):
+                os.remove(p)
+            return 200, _board()
+        if path == 'links':
+            b = _board()
+            url = (data.get('url') or '').strip()
+            if data.get('remove'):
+                b['links'] = [x for x in b['links'] if x['url'] != data['remove']]
+            elif re.match(r'^https?://', url):
+                b['links'].insert(0, {'url': url, 'label': data.get('label') or re.sub(r'^https?://(www\.)?', '', url)[:60], 'added': time.time()})
+            os.makedirs(BOARD, exist_ok=True)
+            with open(LINKS, 'w', encoding='utf-8') as f:
+                json.dump(b['links'], f, indent=1)
+            return 200, _board()
+        if path == 'settings':
+            vals = {}
+            if 'api_key' in data:
+                vals['anthropic_api_key'] = data['api_key'].strip() or None
+            for k in ('model', 'pin_on_top'):
+                if k in data:
+                    vals[k] = data[k]
+            return 200, settings.update(vals)
+        if path == 'chat':
+            refs = [os.path.join(BOARD, os.path.basename(n)) for n in data.get('refs', []) if os.path.isfile(os.path.join(BOARD, os.path.basename(n)))]
+            hist = [{'role': h['role'], 'content': h['content']} for h in data.get('history', [])[-16:] if h.get('role') in ('user', 'assistant') and h.get('content')]
+            model = data.get('model') or settings.get('model', 'claude-opus-5-5')
+            return 200, assistant.chat(model, hist, data.get('text', ''), refs)
+    except bridge.InDesignNotRunning as e:
+        return 409, {'error': str(e)}
+    except Exception as e:  # noqa: BLE001 - every failure goes back to the UI as readable text
+        return 500, {'error': '%s: %s' % (type(e).__name__, e)}
+    return 404, {'error': 'not found'}

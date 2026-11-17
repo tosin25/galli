@@ -239,7 +239,7 @@
     flow();
     var r = story.insertionPoints[s0].rectangles.add({ geometricBounds: [0, 0, h, w], strokeWeight: 0 });
     flow();
-    try { r.place(file); r.fit(FitOptions.PROPORTIONALLY); r.fit(FitOptions.CENTER_CONTENT); } catch (e) { LOG.push('place ' + file.name + ': ' + e.message); }
+    try { try { r.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.PROPORTIONALLY; r.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR; } catch (fe) {} r.place(file); r.fit(FitOptions.PROPORTIONALLY); r.fit(FitOptions.CENTER_CONTENT); } catch (e) { LOG.push('place ' + file.name + ': ' + e.message); }
     return r;
   }
   function figure(b, figStyle, capStyle, maxW) {
@@ -477,7 +477,7 @@
   var artLayer = doc.layers.add({ name: 'Illustrations' });
   function placeArt(pg, name, gb) {
     var r = pg.rectangles.add(artLayer, { geometricBounds: gb, strokeWeight: 0 });
-    try { r.place(File(ART + '/' + name)); r.fit(FitOptions.PROPORTIONALLY); r.fit(FitOptions.CENTER_CONTENT); r.fit(FitOptions.FRAME_TO_CONTENT); } catch (e) { LOG.push('art ' + name + ': ' + e.message); }
+    try { try { r.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.PROPORTIONALLY; r.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR; } catch (fe) {} r.place(File(ART + '/' + name)); r.fit(FitOptions.PROPORTIONALLY); r.fit(FitOptions.CENTER_CONTENT); r.fit(FitOptions.FRAME_TO_CONTENT); } catch (e) { LOG.push('art ' + name + ': ' + e.message); }
     return r;
   }
   if (O.character && O.layout != 'minimal') {

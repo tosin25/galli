@@ -16,6 +16,9 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from copilot import copilot_api  # noqa: E402  (copilot routes: /copilot, /api/c/...)
+
 G = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORK, OUT, STYLE = os.path.join(G, 'work'), os.path.join(G, 'out'), os.path.join(G, 'style')
 PROJECT = os.path.join(WORK, 'project.json')
@@ -170,6 +173,13 @@ class H(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         if u.path in ('/', '/index.html'):
             return self.file(os.path.join(G, 'ui'), 'index.html')
+        if u.path in ('/copilot', '/copilot.html'):
+            return self.file(os.path.join(G, 'ui'), 'copilot.html')
+        if u.path.startswith('/api/c/'):
+            code, body = copilot_api.get(u.path[7:], parse_qs(u.query))
+            return self.send(code, body)
+        if u.path.startswith('/refs/'):
+            return self.file(os.path.join(WORK, 'refs', 'board'), u.path[6:])
         if u.path == '/api/state':
             return self.send(200, state())
         if u.path.startswith('/out/'):
@@ -185,6 +195,9 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
+        if u.path.startswith('/api/c/'):
+            code, body = copilot_api.post(u.path[7:], q, self.body(), unquote(self.headers.get('X-Filename', '')))
+            return self.send(code, body)
         p = load_project()
         if u.path == '/api/upload':
             slot = q.get('slot', [''])[0]
@@ -237,10 +250,18 @@ class H(BaseHTTPRequestHandler):
         self.send(404, {'error': 'not found'})
 
 
+class Server(ThreadingHTTPServer):
+    # On Windows, address reuse lets a second server share the port silently; refuse instead.
+    allow_reuse_address = False
+
+
 if __name__ == '__main__':
-    srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
+    try:
+        srv = Server(('127.0.0.1', PORT), H)
+    except OSError:
+        sys.exit('Galley is already running on http://localhost:%d (close that window first).' % PORT)
     url = 'http://localhost:%d' % PORT
-    print('Galley UI on ' + url + '  (Ctrl+C to stop)')
+    print('Galley on ' + url + '  (copilot: ' + url + '/copilot)  Ctrl+C to stop')
     if '--no-browser' not in sys.argv:
-        webbrowser.open(url)
+        webbrowser.open(url + ('/copilot' if '--copilot' in sys.argv else ''))
     srv.serve_forever()

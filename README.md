@@ -5,6 +5,10 @@ same chapter in several looks, checks every page automatically, and exports PDFs
 It is meant for in-house book designers, not engineers. This folder is a working prototype for Windows and
 InDesign 2022+.
 
+**v0.2 adds the Galley Copilot**: a window docked beside InDesign that works on the document you have open:
+continue the book in *your* paragraph styles, check every page, change styles by asking, and collect references.
+Start it with `.\galley.ps1 copilot`. See [Copilot](#copilot) and [TESTING.md](TESTING.md).
+
 ```
 Galley/
   galley.ps1               one command for everything (ingest, build, variants, check, ui)
@@ -13,7 +17,16 @@ Galley/
   indesign/build_chapter.jsx   builds the chapter in InDesign from content.json + a style spec
   indesign/qa_export.jsx       QA checks + PDF + PNG previews (also works on any open document)
   indesign/run.jsx             runs a script and reports errors back to PowerShell
-  ui/index.html, ui/server.py  local web UI (checklist -> ingest -> variants -> pick)
+  ui/index.html, ui/server.py  local web UI (checklist -> ingest -> variants -> pick); also serves the copilot
+  ui/copilot.html          the copilot window (Assist, Check, Continue, References)
+  copilot/bridge.py        the only code that talks to InDesign (COM + ExtendScript, one undo step per change)
+  copilot/mapping.py       matches the designer's style names to Galley roles
+  copilot/assistant.py     chat: models, tools, provider layer (Claude today; others plug in here)
+  copilot/copilot_api.py   HTTP handlers for the copilot window
+  indesign/flow_into.jsx   "continue in my style": flows content into the open document with its own styles
+  samples/make_designer_sample.jsx   test fixture: a designer's document with their own style names
+  tests/smoke_copilot.py   end-to-end test of the copilot path, including the one-step undo
+  tools/sheet.ps1          page previews on one contact sheet
   samples/                 plants_chapter.docx (generic sample) + make_sample.py
   art/                     generic spot illustrations (SVG sources in art/src)
   work/                    content.json, extracted media, ingest_report.txt, UI project state
@@ -23,8 +36,10 @@ Galley/
 
 ## Requirements
 
-- Windows with Adobe InDesign 2022 or later (driven through COM; InDesign opens if it is not running).
-- Python 3 (for ingest and the UI). No packages to install.
+- Windows with Adobe InDesign (tested on 2022; it is driven through COM scripting, which every version since
+  CS3 supports). The copilot never starts InDesign; the batch commands start it if needed.
+- Python 3, then once: `python -m pip install -r requirements.txt` (pywin32 for COM, anthropic for chat).
+- For chat only: a Claude API key, entered in the copilot's settings (stored in `%APPDATA%\Galley`, not here).
 - The fonts named in the style specs. The three samples use Poppins, Nunito, Georgia, Playfair Display,
   Inter and Google Sans.
 
@@ -40,6 +55,8 @@ From PowerShell in this folder:
 .\galley.ps1 build -Style classic                       # one look only
 .\galley.ps1 check                                      # QA + export the document open in InDesign
 .\galley.ps1 ui                                         # web UI at http://localhost:8765
+.\galley.ps1 copilot                                    # copilot window beside InDesign
+python tests\smoke_copilot.py                           # end-to-end copilot test (needs InDesign open)
 ```
 
 If PowerShell blocks the script, run it with `powershell -ExecutionPolicy Bypass -File .\galley.ps1 all`.
@@ -91,6 +108,29 @@ missing or changed links, images under 150 ppi, and empty pages. Results go to `
    chosen structure), see page previews and QA for each;
 5. pick one. The pick is saved in `work/project.json`.
 
+## Copilot
+
+`.\galley.ps1 copilot` starts the local server and opens a narrow app window on the right edge of the screen,
+pinned above InDesign. It connects to the running InDesign (any version with COM scripting) and follows the
+document you have open: name, pages, styles and your current selection, refreshed every few seconds.
+
+- **Continue**: choose a .docx (or the sample). Galley matches the manuscript's roles (chapter title, section
+  heading, body, example box, exercise, question, note...) to the paragraph styles already in your document
+  and shows its guesses for you to confirm. **Flow into this document** adds pages after the last page and
+  pours the chapter in with *your* styles plus Galley's keep rules, figure fitting, option columns and
+  stranded-heading fixes, then runs the check. The confirmed mapping is saved in the document, so the next
+  chapter needs no setup. It even copies your chapter label ("CHAPTER 2" -> "CHAPTER 3").
+- **Check**: every QA check on the open document; click an issue to jump to its page.
+- **Apply look to all**: restyle one paragraph by hand, select it, and the bar at the top turns that look into
+  the paragraph style everywhere.
+- **Assist**: chat with a model that acts through tools: read the document, check it, go to a page, change a
+  paragraph style, apply a look to all, suggest the mapping, flow the manuscript. Pick the model at the top
+  (Claude Opus 5.5 by default; OpenAI, DeepSeek and a Galley model are listed as coming).
+- **References**: drop images (screenshots, Pinterest saves, sample pages), keep board links, select images
+  and ask Galley to describe the style and suggest style changes.
+- **Undo**: every change Galley makes is ONE undo step in InDesign ("Galley: flow manuscript", "Galley: change
+  style ..."). Checks never add undo steps. This is covered by the smoke test.
+
 ## Limits (honest)
 
 - Reference images are collected but not yet read automatically. In this prototype the designer turns them
@@ -98,8 +138,11 @@ missing or changed links, images under 150 ppi, and empty pages. Results go to `
   should only ever set style parameters, never copy a reference's artwork or layout.
 - Illustrations are not generated. Galley places supplied art (here a small generic set). New characters or
   diagrams need illustrators or an image model, plus the publisher's rights checks.
-- "Style from sample pages" (reading styles from pages the designer lays out) is designed but not built: it
-  needs the InDesign panel below.
+- "Style from sample pages" works through the copilot's Continue tab (your styles, matched by name). It does
+  not yet infer styles from pages formatted only with local overrides.
+- The copilot window is a browser app window pinned on top, not yet a panel inside InDesign or an installed
+  app with a tray icon. Pinterest boards can't be embedded (Pinterest blocks it): save or screenshot pins.
+- Chat needs a Claude API key; only Claude models are connected so far.
 - Ingest is heuristic. Odd manuscripts need the review list, and later Claude-assisted tagging.
 - One chapter per run. Whole-book assembly is listed below.
 - Windows + COM only. macOS would drive the same JSX via AppleScript.
@@ -108,7 +151,8 @@ missing or changed links, images under 150 ppi, and empty pages. Results go to `
 
 ## Next steps
 
-1. **InDesign UXP panel**: the same flow inside InDesign: drop a manuscript, pick a spec, build, see QA with
+1. **Installable copilot** (Tauri/Electron wrapper: tray icon, auto-start, updates) and/or a **UXP panel** for
+   InDesign 2023+, with a CEP fallback for older versions. Same flow inside InDesign: drop a manuscript, pick a spec, build, see QA with
    click-to-page links. Mode A: read paragraph/object styles from the designer's sample pages into a spec.
 2. **Reference reading**: a vision model proposes spec values (palette, type scale, box treatments) from the
    uploaded references; the designer approves each one.

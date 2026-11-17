@@ -1,4 +1,4 @@
-<#
+﻿<#
   Galley - manuscript in, book out.
 
   .\galley.ps1 ingest   -Manuscript samples\plants_chapter.docx      # .docx -> work\content.json (+ media, ingest_report.txt)
@@ -6,11 +6,12 @@
   .\galley.ps1 variants [-Styles bright,classic,modern]              # same chapter in every style + QA + out\report.md
   .\galley.ps1 check                                                 # re-run QA + export on the document open in InDesign
   .\galley.ps1 ui                                                    # local web UI on http://localhost:8765
+  .\galley.ps1 copilot                                               # copilot window docked beside InDesign
 
   Needs Adobe InDesign (2022 or later) on Windows; it is driven through COM. Python 3 for ingest and the UI.
 #>
 param(
-  [Parameter(Position = 0)][ValidateSet('ingest', 'build', 'variants', 'check', 'ui', 'all')][string]$Command = 'all',
+  [Parameter(Position = 0)][ValidateSet('ingest', 'build', 'variants', 'check', 'ui', 'copilot', 'all')][string]$Command = 'all',
   [string]$Manuscript = '',
   [string]$Style = 'bright',
   [string[]]$Styles = @(),
@@ -33,6 +34,7 @@ function Invoke-Jsx($app, [string]$script, [hashtable]$vars) {
   Remove-Item $result -ErrorAction SilentlyContinue
   $app.ScriptArgs.SetValue('galley_target', $script)
   $app.ScriptArgs.SetValue('galley_result', $result)
+  $app.ScriptArgs.SetValue('galley_undo', '')  # shared with the copilot: never inherit its undo name
   try { [void]$app.DoScript((Join-Path $G 'indesign\run.jsx'), $JS) } catch { return "ERROR: $($_.Exception.Message)" }
   if (Test-Path $result) { Get-Content $result -Raw } else { 'ERROR: no result written' }
 }
@@ -143,4 +145,35 @@ switch ($Command) {
     Rename-Previews (Join-Path $dir 'previews'); Get-Content (Join-Path $dir 'qa.txt')
   }
   'ui' { & python (Join-Path $G 'ui\server.py') }
+  'copilot' {
+    # 1. local server (reused if it is already running)
+    $url = 'http://127.0.0.1:8765'  # not 'localhost': Windows PowerShell tries IPv6 first and stalls
+    $up = $false; try { $up = (Invoke-WebRequest "$url/api/c/state" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {}
+    if (-not $up) {
+      # the real Python, not the Microsoft Store alias that 'python' can resolve to
+      $py = (Get-Command python -All -ErrorAction SilentlyContinue | Where-Object { $_.Source -notlike '*WindowsApps*' } | Select-Object -First 1).Source
+      if (-not $py) { $py = 'python' }
+      Start-Process $py -ArgumentList "`"$(Join-Path $G 'ui\server.py')`" --no-browser" -WindowStyle Minimized
+      for ($i = 0; $i -lt 120 -and -not $up; $i++) { Start-Sleep -Milliseconds 250; try { $up = (Invoke-WebRequest "$url/api/c/state" -UseBasicParsing -TimeoutSec 2).StatusCode -eq 200 } catch {} }
+      if (-not $up) { throw 'The Galley server did not start. Run: python ui\server.py' }
+    }
+    # 2. its own app window, docked at the right edge of the screen
+    Add-Type -AssemblyName System.Windows.Forms
+    $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea; $w = 440
+    $edge = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+      "$env:ProgramFiles\Google\Chrome\Application\chrome.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $edge) { Start-Process "$url/copilot"; return }
+    $browserProfile = Join-Path $env:LOCALAPPDATA 'Galleyrowser'
+    Start-Process $edge -ArgumentList "--app=$url/copilot", "--user-data-dir=`"$browserProfile`"", "--window-size=$w,$($wa.Height)", "--window-position=$($wa.Right - $w),$($wa.Top)", '--no-first-run'
+    # 3. keep it above InDesign (Windows: topmost flag on the window titled "Galley Copilot")
+    Add-Type @'
+using System; using System.Runtime.InteropServices;
+public static class GalleyWin { [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags); }
+'@
+    for ($i = 0; $i -lt 40; $i++) {
+      Start-Sleep -Milliseconds 250
+      $p = Get-Process | Where-Object { $_.MainWindowTitle -like 'Galley Copilot*' } | Select-Object -First 1
+      if ($p) { [void][GalleyWin]::SetWindowPos($p.MainWindowHandle, [IntPtr](-1), $wa.Right - $w, $wa.Top, $w, $wa.Height, 0x0040); Write-Host 'Galley Copilot is open (docked right, pinned on top).'; break }
+    }
+  }
 }
