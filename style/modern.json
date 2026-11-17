@@ -1,0 +1,31 @@
+{
+  "id": "modern",
+  "name": "Modern Clean",
+  "description": "Contemporary middle-grade book: geometric sans, full-bleed colour band opener with a large number, sidebar boxes, dark exercise bars, folio block on the outer edge.",
+  "trim": { "width": 203, "height": 254 },
+  "bleed": 3,
+  "margins": { "top": 20, "bottom": 22, "inside": 19, "outside": 21 },
+  "fonts": {
+    "heading": { "family": "Inter", "bold": "Bold", "semibold": "Bold", "regular": "Regular" },
+    "body": { "family": "Google Sans", "regular": "Regular", "bold": "Bold", "italic": "Italic" }
+  },
+  "type": { "body": 10.5, "leading": 15.5, "h2": 17, "h3": 12, "box_head": 10.5, "small": 9, "caption": 8.5, "opener_title": 34, "opener_number": 72, "header": 7.5, "folio": 9 },
+  "palette": {
+    "primary": "#2D6A4F", "secondary": "#1F2933", "accent": "#52B788", "ink": "#1F2933",
+    "primary_tint": "#E3F1EA", "secondary_tint": "#EEF1F4", "note": "#E9F5EE", "line": "#C3CBD3", "paper": "#FFFFFF"
+  },
+  "opener": { "layout": "band", "height": 96, "color": "primary", "label": "CHAPTER", "character": "seedling.png", "decor": "number", "objectives": { "fill": "secondary_tint", "head": "primary" } },
+  "h2": { "treatment": "number_rule", "color": "primary", "text": "secondary" },
+  "h3": { "treatment": "plain", "color": "primary" },
+  "example": { "treatment": "sidebar", "head": "label", "color": "primary", "fill": "primary_tint", "radius": 0 },
+  "activity": { "label_color": "primary", "treatment": "sidebar", "head": "label", "color": "accent", "fill": "note", "radius": 0 },
+  "exercise": { "treatment": "shaded", "head": "band", "color": "secondary", "fill": "secondary_tint", "radius": 0, "answer_lines": "line" },
+  "note": { "treatment": "shaded", "fill": "note", "label_color": "primary", "icon": "", "radius": 2 },
+  "table": { "head_fill": "secondary", "head_text": "paper", "stroke": "line", "zebra": "secondary_tint" },
+  "list": { "bullet_color": "accent" },
+  "folio": { "position": "outer", "shape": "block", "color": "primary", "text": "paper" },
+  "header": { "show": true, "left": "book", "right": "chapter", "rule": false, "color": "primary" },
+  "side_tab": { "show": true, "color": "accent", "text": "paper", "width": 7, "height": 30 },
+  "figures": { "max_width": 0.62, "min_scale": 0.6 },
+  "illustrations": { "gap_min": 45, "max_height": 55, "set": ["seedling.png", "magnifier.png", "watering_can.png"] }
+}

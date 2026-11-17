@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galley</title>
+<style>
+  :root { --paper:#FBF8F3; --card:#FFFFFF; --ink:#1F2328; --muted:#6B6F76; --line:#E4DED4; --accent:#C2410C; --accent-2:#0F766E; --ok:#15803D; --warn:#B45309; --chip:#F2EDE4; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 "Segoe UI", system-ui, sans-serif; }
+  header { display:flex; align-items:baseline; gap:16px; padding:22px 32px 14px; border-bottom:1px solid var(--line); background:var(--card); position:sticky; top:0; z-index:5; }
+  header h1 { margin:0; font:700 26px/1 Georgia, serif; letter-spacing:-.5px; }
+  header h1 span { color:var(--accent); }
+  header p { margin:0; color:var(--muted); }
+  main { max-width:1180px; margin:0 auto; padding:24px 32px 80px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:22px 24px; margin-bottom:20px; }
+  h2 { margin:0 0 4px; font-size:18px; display:flex; align-items:center; gap:10px; }
+  h2 .n { display:inline-grid; place-items:center; width:26px; height:26px; border-radius:50%; background:var(--ink); color:#fff; font-size:13px; }
+  .sub { color:var(--muted); margin:0 0 16px; }
+  .modes { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .mode { border:2px solid var(--line); border-radius:10px; padding:16px; cursor:pointer; background:var(--paper); }
+  .mode.on { border-color:var(--accent); background:#FFF7F1; }
+  .mode b { display:block; margin-bottom:4px; }
+  .mode small { color:var(--muted); }
+  .tag { display:inline-block; font-size:11px; font-weight:600; padding:2px 7px; border-radius:20px; background:var(--chip); color:var(--muted); margin-left:6px; vertical-align:middle; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; }
+  .item { border:1px solid var(--line); border-radius:8px; padding:11px 12px; display:flex; gap:10px; align-items:flex-start; background:var(--paper); }
+  .item.done { background:#F2FAF4; border-color:#BFE3C9; }
+  .tick { width:20px; height:20px; border-radius:50%; border:2px solid #C9C2B6; flex:none; margin-top:1px; display:grid; place-items:center; font-size:12px; color:#fff; }
+  .done .tick { background:var(--ok); border-color:var(--ok); }
+  .item b { font-size:14px; }
+  .item .req { color:var(--accent); font-size:11px; font-weight:700; margin-left:4px; }
+  .item small { display:block; color:var(--muted); font-size:12.5px; }
+  .item .files { font-size:12px; color:var(--accent-2); word-break:break-all; }
+  .item label.up { font-size:12px; color:var(--accent); cursor:pointer; text-decoration:underline; }
+  .item input[type=file] { display:none; }
+  .params { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; margin-top:18px; padding-top:16px; border-top:1px dashed var(--line); }
+  .params label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.04em; }
+  input[type=text], input[type=number], select { width:100%; padding:7px 9px; border:1px solid var(--line); border-radius:6px; font:inherit; background:#fff; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .sw { display:flex; gap:6px; flex-wrap:wrap; }
+  .sw input[type=color] { width:36px; height:30px; border:1px solid var(--line); border-radius:6px; padding:1px; background:#fff; }
+  button { font:600 14px "Segoe UI", sans-serif; border:0; border-radius:7px; padding:9px 16px; cursor:pointer; background:var(--ink); color:#fff; }
+  button.alt { background:var(--chip); color:var(--ink); }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:14px; }
+  .progress { height:8px; background:var(--chip); border-radius:6px; overflow:hidden; flex:1; min-width:160px; }
+  .progress i { display:block; height:100%; background:var(--ok); }
+  pre.log { background:#1F2328; color:#D8DEE4; border-radius:8px; padding:12px 14px; max-height:220px; overflow:auto; font:12.5px/1.45 Consolas, monospace; white-space:pre-wrap; margin:12px 0 0; }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; }
+  .chip { background:var(--chip); border-radius:20px; padding:3px 10px; font-size:13px; }
+  .stylepick { display:flex; gap:12px; flex-wrap:wrap; margin:6px 0 4px; }
+  .stylepick label { display:flex; gap:6px; align-items:center; border:1px solid var(--line); border-radius:8px; padding:7px 10px; background:var(--paper); cursor:pointer; }
+  .variants { display:grid; grid-template-columns:repeat(auto-fill,minmax(330px,1fr)); gap:16px; margin-top:12px; }
+  .v { border:1px solid var(--line); border-radius:10px; overflow:hidden; background:var(--paper); display:flex; flex-direction:column; }
+  .v.picked { outline:3px solid var(--accent); }
+  .v .thumbs { display:flex; gap:6px; padding:10px; background:#3A3D42; overflow-x:auto; }
+  .v .thumbs img { height:150px; border-radius:2px; box-shadow:0 1px 3px #0006; cursor:zoom-in; }
+  .v .meta { padding:12px 14px; flex:1; }
+  .v .meta b { font-size:15px; }
+  .v .meta small { display:block; color:var(--muted); }
+  .qa { margin-top:8px; font-size:13px; }
+  .qa .pass { color:var(--ok); font-weight:700; }
+  .qa .fail { color:var(--warn); font-weight:700; }
+  .qa ul { margin:4px 0 0; padding-left:18px; color:var(--muted); }
+  .v .acts { display:flex; gap:8px; padding:0 14px 14px; flex-wrap:wrap; }
+  .v .acts a { font-size:13px; color:var(--accent-2); }
+  .note { background:#FFF7E6; border:1px solid #F3D9A4; border-radius:8px; padding:10px 12px; font-size:13.5px; }
+  .lightbox { position:fixed; inset:0; background:#000c; display:none; place-items:center; z-index:20; cursor:zoom-out; }
+  .lightbox img { max-width:94vw; max-height:94vh; background:#fff; }
+  @media (max-width:700px) { main { padding:16px; } header { padding:16px; flex-wrap:wrap; } .modes { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Gall<span>e</span>y</h1><p>Manuscript in, book out.</p></header>
+<main>
+  <section>
+    <h2><span class="n">1</span>How do you want to set the style?</h2>
+    <p class="sub">Both modes end the same way: Galley builds real InDesign pages with paragraph styles, anchored objects and QA.</p>
+    <div class="modes">
+      <div class="mode" data-mode="sample"><b>Style from sample pages <span class="tag">InDesign panel, next</span></b>
+        <small>Lay out a few sample pages yourself in InDesign, open the Galley panel, drop in the manuscript, and Galley fills the rest in your styles. In this prototype: build your sample, then run <code>galley.ps1 check</code> for QA. The UXP panel is on the roadmap.</small></div>
+      <div class="mode" data-mode="references"><b>Style from references <span class="tag">working prototype</span></b>
+        <small>Upload the manuscript and 15–20 reference pages. Galley turns them into style parameters, builds one chapter in several looks, you pick one, Galley builds the rest.</small></div>
+    </div>
+  </section>
+
+  <section id="refs">
+    <h2><span class="n">2</span>Reference checklist</h2>
+    <p class="sub">Required items are marked. References tell Galley <i>what kind</i> of treatment you want; they are never copied onto the page.</p>
+    <div class="bar" style="margin:0 0 12px"><div class="progress"><i id="prog" style="width:0"></i></div><span id="progtxt"></span>
+      <button class="alt" id="useSample">Use the sample manuscript</button></div>
+    <div class="grid" id="checklist"></div>
+    <div class="params">
+      <div><label>Trim size (mm)</label><div class="row"><input type="number" id="tw" placeholder="width"> × <input type="number" id="th" placeholder="height"></div></div>
+      <div><label>Heading font</label><input type="text" id="fh" list="fontlist" placeholder="e.g. Poppins"></div>
+      <div><label>Body font</label><input type="text" id="fb" list="fontlist" placeholder="e.g. Nunito"></div>
+      <div><label>Structure to start from</label><select id="base"></select></div>
+      <div style="grid-column:1/-1"><label>Palette</label><div class="sw" id="palette"></div></div>
+    </div>
+    <datalist id="fontlist"><option>Poppins</option><option>Nunito</option><option>Google Sans</option><option>Inter</option><option>Georgia</option><option>Playfair Display</option><option>Segoe UI</option><option>Arial</option><option>Cambria</option></datalist>
+    <div class="bar"><button id="saveParams">Save checklist</button><span id="saved" class="sub" style="margin:0"></span></div>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span>Read the manuscript</h2>
+    <p class="sub">Galley tags headings, body, examples, exercises, questions, tables, figures and notes. Check the decisions before building.</p>
+    <div class="bar"><button id="ingest">Ingest manuscript</button></div>
+    <div id="content"></div>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span>Build one chapter in several looks</h2>
+    <p class="sub">Each look is a full InDesign build with a PDF, page previews and an automatic QA pass (overset text, split boxes, stranded headings, objects off the page, missing links).</p>
+    <div class="stylepick" id="stylepick"></div>
+    <div class="bar"><button id="build">Build variants</button><span class="sub" style="margin:0" id="buildhint"></span></div>
+    <pre class="log" id="log" hidden></pre>
+    <div class="variants" id="variants"></div>
+  </section>
+
+  <section>
+    <h2><span class="n">5</span>Pick one, build the book</h2>
+    <p class="sub" id="pickedtxt">Pick a variant above. Galley then builds every chapter with that spec, each one QA-checked the same way.</p>
+    <div class="note">Prototype scope: one chapter. Whole-book runs (chapter list, continuous page numbers, InDesign Book file) are the next step in the plan.</div>
+  </section>
+</main>
+<div class="lightbox" id="lb"><img alt=""></div>
+<script>
+const $ = s => document.querySelector(s);
+let S = null, polling = null;
+const PAL = ['primary', 'secondary', 'accent', 'ink', 'primary_tint', 'secondary_tint', 'note'];
+async function api(path, body, headers) {
+  const r = await fetch(path, body === undefined ? {} : { method: 'POST', body: typeof body === 'string' || body instanceof Blob ? body : JSON.stringify(body), headers: headers || {} });
+  return r.json();
+}
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function render(st, first) {
+  S = st;
+  const P = st.project;
+  document.querySelectorAll('.mode').forEach(m => m.classList.toggle('on', m.dataset.mode === (P.mode || 'references')));
+  // checklist
+  const req = st.checklist.filter(i => i.required), done = req.filter(i => i.done).length;
+  $('#prog').style.width = (100 * done / req.length) + '%';
+  $('#progtxt').textContent = `${done} of ${req.length} required`;
+  $('#checklist').innerHTML = st.checklist.map(i => `
+    <div class="item ${i.done ? 'done' : ''}"><div class="tick">${i.done ? '&#10003;' : ''}</div><div>
+      <b>${esc(i.label)}</b>${i.required ? '<span class="req">REQUIRED</span>' : ''}<small>${esc(i.hint)}</small>
+      ${i.files.length ? `<div class="files">${i.files.map(esc).join(', ')}</div>` : ''}
+      ${i.form ? '' : `<label class="up">${i.files.length ? 'add another' : 'upload'}<input type="file" data-slot="${i.key}" ${i.key === 'manuscript' ? 'accept=".docx"' : 'accept="image/*,.pdf"'}></label>`}
+    </div></div>`).join('');
+  document.querySelectorAll('input[type=file]').forEach(inp => inp.onchange = async () => {
+    for (const f of inp.files) render(await api('/api/upload?slot=' + inp.dataset.slot, f, { 'X-Filename': encodeURIComponent(f.name) }));
+  });
+  // parameters (fill once, from saved params or the first spec)
+  if (first) {
+    const base = P.params.base || 'bright', spec = st.styles.find(s => s.id === base) || st.styles[0];
+    $('#base').innerHTML = st.styles.filter(s => s.id !== 'custom').map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('');
+    $('#base').value = base;
+    const t = P.params.trim || {}, f = P.params.fonts || {}, pal = P.params.palette || {};
+    $('#tw').value = t.width || ''; $('#th').value = t.height || '';
+    $('#fh').value = f.heading || ''; $('#fb').value = f.body || '';
+    $('#tw').placeholder = spec.trim.width; $('#th').placeholder = spec.trim.height;
+    $('#fh').placeholder = spec.fonts.heading.family; $('#fb').placeholder = spec.fonts.body.family;
+    $('#palette').innerHTML = PAL.map(k => `<label style="text-transform:none;font-weight:400;display:flex;gap:4px;align-items:center;margin:0">
+      <input type="color" data-k="${k}" value="${pal[k] || spec.palette[k]}"> <span style="font-size:12px">${k.replace('_', ' ')}</span></label>`).join('');
+  }
+  // content
+  if (st.content) {
+    const c = st.content;
+    $('#content').innerHTML = `<p style="margin:14px 0 8px"><b>Chapter ${esc(c.meta.chapter_no)}: ${esc(c.meta.chapter_title)}</b> <span class="sub">from ${esc(c.meta.source)}${c.meta.book ? ' · ' + esc(c.meta.book) : ''}</span></p>
+      <div class="chips">${Object.entries(c.counts).map(([k, v]) => `<span class="chip">${v} × ${esc(k)}</span>`).join('')}</div>
+      <details style="margin-top:10px"><summary>Ingest decisions</summary><pre class="log">${esc(c.report)}</pre></details>`;
+  }
+  // style picker
+  const chosen = new Set([...document.querySelectorAll('#stylepick input:checked')].map(i => i.value));
+  $('#stylepick').innerHTML = st.styles.filter(s => s.id !== 'custom').concat([{ id: 'custom', name: 'Custom (from checklist)' }]).map(s =>
+    `<label><input type="checkbox" value="${s.id}" ${(first ? s.id !== 'custom' : chosen.has(s.id)) ? 'checked' : ''}> ${esc(s.name)}</label>`).join('');
+  const ready = done === req.length;
+  $('#buildhint').textContent = ready ? '' : 'Tip: the "Custom" look needs the required checklist items. The three built-in looks run any time.';
+  // job
+  const j = st.job;
+  $('#log').hidden = !j.log; $('#log').textContent = j.log; $('#log').scrollTop = 1e9;
+  ['#ingest', '#build'].forEach(b => $(b).disabled = j.running);
+  if (j.running && !polling) polling = setInterval(async () => { const s = await api('/api/state'); render(s); if (!s.job.running) { clearInterval(polling); polling = null; } }, 1500);
+  // variants
+  $('#variants').innerHTML = st.variants.map(v => {
+    const pages = Array.from({ length: Math.min(v.pages, 6) }, (_, i) => `out/${v.id}/previews/p${String(i + 1).padStart(2, '0')}.png`);
+    const errs = (v.errors || []).map(e => `<li>p${esc(e.page)}: ${esc(e.msg)}</li>`).join('');
+    const warns = (v.warnings || []).map(e => `<li>p${esc(e.page)}: ${esc(e.msg)}</li>`).join('');
+    return `<div class="v ${P.picked === v.id ? 'picked' : ''}">
+      <div class="thumbs">${pages.map(p => `<img src="/${p}?t=${Date.now()}" data-full="/out/${v.id}/contact_sheet.png" alt="page preview">`).join('')}</div>
+      <div class="meta"><b>${esc(v.name)}</b><small>${esc(v.trim)} · ${v.pages} pages · built in ${v.seconds}s</small><small>${esc(v.description)}</small>
+        <div class="qa">QA: ${v.passed ? '<span class="pass">PASS</span>' : '<span class="fail">CHECK</span>'} — ${(v.errors || []).length} errors, ${(v.warnings || []).length} notes
+        ${errs || warns ? `<ul>${errs}${warns}</ul>` : ''}</div></div>
+      <div class="acts"><button data-pick="${v.id}">${P.picked === v.id ? 'Picked' : 'Pick this look'}</button>
+        <a href="/out/${v.id}/${v.id}_chapter.pdf" target="_blank">PDF</a><a href="/out/${v.id}/contact_sheet.png" target="_blank">All pages</a><a href="/out/${v.id}/qa.txt" target="_blank">QA report</a></div></div>`;
+  }).join('');
+  document.querySelectorAll('[data-pick]').forEach(b => b.onclick = async () => render(await api('/api/pick', { id: b.dataset.pick })));
+  document.querySelectorAll('.thumbs img').forEach(i => i.onclick = () => { $('#lb img').src = i.dataset.full; $('#lb').style.display = 'grid'; });
+  const pv = st.variants.find(v => v.id === P.picked);
+  $('#pickedtxt').innerHTML = pv ? `Picked <b>${esc(pv.name)}</b> (<code>style/${esc(pv.id)}.json</code>). Run <code>galley.ps1 build -Style ${esc(pv.id)}</code> for each chapter's content.json.` : $('#pickedtxt').innerHTML;
+}
+
+document.querySelectorAll('.mode').forEach(m => m.onclick = async () => render(await api('/api/params', { mode: m.dataset.mode })));
+$('#lb').onclick = () => $('#lb').style.display = 'none';
+$('#useSample').onclick = async () => render(await api('/api/sample', {}));
+$('#saveParams').onclick = async () => {
+  const p = { base: $('#base').value, palette: {} };
+  const w = $('#tw').value, h = $('#th').value;
+  if (w && h) p.trim = { width: +w, height: +h };
+  if ($('#fh').value || $('#fb').value) p.fonts = { heading: $('#fh').value, body: $('#fb').value };
+  document.querySelectorAll('#palette input').forEach(i => p.palette[i.dataset.k] = i.value);
+  render(await api('/api/params', p));
+  $('#saved').textContent = 'Saved.';
+};
+$('#ingest').onclick = async () => render(await api('/api/run', { step: 'ingest' }));
+$('#build').onclick = async () => {
+  const styles = [...document.querySelectorAll('#stylepick input:checked')].map(i => i.value);
+  render(await api('/api/run', { step: 'variants', styles }));
+};
+api('/api/state').then(s => render(s, true));
+</script>
+</body>
+</html>

@@ -1,0 +1,257 @@
+<title>Galley</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a printer's proof sheet. Content sits inside crop-marked frames; CMYK process colours mark the four QA checks. */
+  :root {
+    --paper: #F6F6F2; --sheet: #FFFFFF; --ink: #16181D; --soft: #5A5F69; --rule: #D9DAD4;
+    --cyan: #0089C7; --magenta: #D6246E; --yellow: #E6B800; --key: #16181D; --ok: #1D7A46;
+    --tint: #EAF4FA;
+    --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", Consolas, "Courier New", monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --paper: #121419; --sheet: #1A1D24; --ink: #ECEDEF; --soft: #A3A8B3; --rule: #30343D;
+    --cyan: #3BB2EA; --magenta: #F0588F; --yellow: #F2C94C; --key: #ECEDEF; --ok: #4CC07F; --tint: #17303D; color-scheme: dark } }
+  :root[data-theme="dark"] {
+    --paper: #121419; --sheet: #1A1D24; --ink: #ECEDEF; --soft: #A3A8B3; --rule: #30343D;
+    --cyan: #3BB2EA; --magenta: #F0588F; --yellow: #F2C94C; --key: #ECEDEF; --ok: #4CC07F; --tint: #17303D; color-scheme: dark }
+
+  body { background: var(--paper); color: var(--ink); font: 18px/1.6 var(--serif); }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1, h2, h3 { font-family: var(--display); line-height: 1.08; text-wrap: balance; margin: 0; }
+  h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 800; letter-spacing: -0.02em; }
+  h3 { font-size: 21px; font-weight: 700; }
+  p { margin: 0; }
+  .eyebrow { font: 500 12.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--soft); }
+  .lede { font-size: 21px; color: var(--soft); max-width: 62ch; }
+  section { padding-block: 72px; border-top: 1px solid var(--rule); }
+  section > .wrap > header { display: grid; gap: 14px; margin-bottom: 36px; max-width: 760px; }
+
+  /* hero */
+  .hero { padding-block: 64px 56px; border-top: 0; }
+  .brand { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 40px; }
+  .brand b { font: 800 22px/1 var(--display); letter-spacing: -0.02em; }
+  .reg { display: inline-flex; gap: 4px; }
+  .reg i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .hero h1 { font-size: clamp(44px, 8vw, 96px); font-weight: 800; letter-spacing: -0.035em; max-width: 12ch; }
+  .hero h1 em { font-style: normal; color: var(--cyan); }
+  .hero .lede { margin-top: 22px; }
+  .openers { margin-top: 48px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+  figure { margin: 0; min-width: 0; }
+  .crop { position: relative; padding: 14px; }
+  .crop::before, .crop::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      linear-gradient(var(--soft), var(--soft)) 0 14px / 9px 1px no-repeat, linear-gradient(var(--soft), var(--soft)) 14px 0 / 1px 9px no-repeat,
+      linear-gradient(var(--soft), var(--soft)) 100% 14px / 9px 1px no-repeat, linear-gradient(var(--soft), var(--soft)) calc(100% - 14px) 0 / 1px 9px no-repeat; }
+  .crop::after { transform: scaleY(-1); }
+  .crop img { display: block; width: 100%; height: auto; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 8px 24px rgba(0,0,0,.08); background: #fff; }
+  figcaption { font: 13px/1.45 var(--mono); color: var(--soft); margin-top: 6px; padding-inline: 14px; }
+  figcaption b { color: var(--ink); font-weight: 500; }
+
+  /* problem */
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 48px; }
+  .pain { display: grid; gap: 8px; padding-top: 14px; border-top: 3px solid var(--ink); }
+  .pain p { color: var(--soft); }
+
+  /* modes */
+  .modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .mode { background: var(--sheet); border: 1px solid var(--rule); border-radius: 4px; padding: 28px; display: grid; gap: 16px; align-content: start; min-width: 0; }
+  .mode .tag { justify-self: start; font: 500 12px/1 var(--mono); padding: 6px 9px; border-radius: 3px; background: var(--tint); color: var(--cyan); letter-spacing: .04em; }
+  .mode ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+  .mode ol li::marker { font-family: var(--mono); color: var(--soft); }
+  .check { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; font-size: 15.5px; margin: 0; padding: 0; list-style: none; }
+  .check li { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+  .check .req::before { content: "■"; color: var(--magenta); font-size: 11px; }
+  .check .opt::before { content: "□"; color: var(--soft); font-size: 11px; }
+  .legend { font: 12.5px/1.4 var(--mono); color: var(--soft); }
+
+  /* pipeline */
+  .flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); overflow: hidden; }
+  .step { padding: 22px 22px 24px; border-right: 1px solid var(--rule); display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .step:last-child { border-right: 0; }
+  .step .file { font: 13px/1.3 var(--mono); color: var(--cyan); word-break: break-all; }
+  .step p { font-size: 16px; color: var(--soft); }
+
+  /* qa */
+  .qa { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .qa div { background: var(--sheet); border: 1px solid var(--rule); border-top: 6px solid var(--c); padding: 18px 18px 20px; display: grid; gap: 8px; align-content: start; border-radius: 0 0 4px 4px; min-width: 0; }
+  .qa p { font-size: 15.5px; color: var(--soft); }
+  .fixes { margin-top: 26px; font-size: 16.5px; color: var(--soft); max-width: 75ch; }
+
+  /* proof */
+  .looks { display: grid; gap: 44px; }
+  .look { display: grid; grid-template-columns: minmax(0, 1fr) 270px; gap: 28px; align-items: start; }
+  .look .meta { display: grid; gap: 12px; align-content: start; }
+  .look .meta p { font-size: 16px; color: var(--soft); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font: 13.5px/1.5 var(--mono); }
+  dt { color: var(--soft); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .pass { color: var(--ok); font-weight: 500; }
+  .note { font-size: 15.5px; color: var(--soft); margin-top: 28px; max-width: 75ch; }
+
+  /* lists */
+  .cols3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+  .card { display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .card p, .card li { color: var(--soft); font-size: 16.5px; }
+  ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+  .limits li { color: var(--soft); }
+  .limits li b { color: var(--ink); font-weight: 600; }
+  footer { padding-block: 40px 64px; border-top: 1px solid var(--rule); font: 13px/1.5 var(--mono); color: var(--soft); }
+  code { font: .86em var(--mono); background: var(--tint); padding: 1px 5px; border-radius: 3px; }
+
+  @media (max-width: 860px) {
+    .openers, .qa, .cols3 { grid-template-columns: 1fr 1fr; }
+    .flow { grid-template-columns: 1fr 1fr; } .step:nth-child(2) { border-right: 0; } .step:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
+    .look { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 620px) {
+    body { font-size: 17px; }
+    .openers, .two, .modes, .qa, .cols3, .flow, .check { grid-template-columns: 1fr; }
+    .step { border-right: 0; border-bottom: 1px solid var(--rule); }
+    section { padding-block: 52px; }
+  }
+</style>
+
+<div class="hero wrap">
+  <div class="brand"><span class="reg" aria-hidden="true"><i style="background:var(--cyan)"></i><i style="background:var(--magenta)"></i><i style="background:var(--yellow)"></i><i style="background:var(--key)"></i></span><b>Galley</b><span class="eyebrow">For in-house book designers</span></div>
+  <h1>Manuscript in, <em>book out.</em></h1>
+  <p class="lede">Galley lays out long, structured books (textbooks and workbooks) in InDesign. You set the style once; it sets every example box, exercise and heading, then checks every page.</p>
+  <div class="openers">
+    <figure><div class="crop"><img src="img/bright_opener.jpg" alt="Chapter opener in the Bright Workbook style: orange banner, character, objectives box"></div><figcaption><b>Bright Workbook</b> · 210 × 276 mm</figcaption></figure>
+    <figure><div class="crop"><img src="img/classic_opener.jpg" alt="Chapter opener in the Classic Textbook style: centred serif title between thin rules"></div><figcaption><b>Classic Textbook</b> · 189 × 246 mm</figcaption></figure>
+    <figure><div class="crop"><img src="img/modern_opener.jpg" alt="Chapter opener in the Modern Clean style: full-bleed green band with a large chapter number"></div><figcaption><b>Modern Clean</b> · 203 × 254 mm</figcaption></figure>
+  </div>
+  <p class="note">The same sample chapter, built three times by the prototype from one Word file. Each one is a native, editable InDesign document.</p>
+</div>
+
+<section>
+  <div class="wrap">
+    <header><span class="eyebrow">The problem</span><h2>Long books are mostly repetition, done by hand.</h2></header>
+    <div class="two">
+      <div class="pain"><h3>The same treatments, hundreds of times</h3><p>A workbook chapter has a dozen boxed examples, exercises with answer lines, notes and tables. Designers style each one by hand, chapter after chapter, book after book in the series.</p></div>
+      <div class="pain"><h3>Hand-placed objects break on every edit</h3><p>Boxes and pictures sitting loose on the page don't move when the text changes. One late copy edit can shift every page after it, and someone has to re-place them.</p></div>
+      <div class="pain"><h3>Checking is eyeballing</h3><p>Overset text, a box split over two pages, a heading stranded at the foot of a page. These are found by paging through proofs, late, and found again after the next edit.</p></div>
+      <div class="pain"><h3>The design work gets squeezed</h3><p>Time goes into production instead of the choices that matter: the opener, the box system, the palette, the pacing of each spread.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <header><span class="eyebrow">How it works</span><h2>Two ways to give Galley the style.</h2><p class="lede">Both end the same way: real InDesign pages with paragraph styles, anchored objects and an automatic QA pass.</p></header>
+    <div class="modes">
+      <div class="mode">
+        <span class="tag">A · Style from sample</span>
+        <h3>Lay out a few pages. Galley does the rest.</h3>
+        <ol>
+          <li>Design a few sample pages in InDesign the way you always do.</li>
+          <li>Open the Galley panel and drop in the full manuscript.</li>
+          <li>Galley reads your paragraph, object and table styles and your masters, and turns them into a spec.</li>
+          <li>It populates the rest of the book in that style and runs QA.</li>
+        </ol>
+      </div>
+      <div class="mode">
+        <span class="tag">B · Style from references</span>
+        <h3>Start from references, choose from real pages.</h3>
+        <ol>
+          <li>Upload the manuscript and 15 to 20 references. Required items form a checklist.</li>
+          <li>Galley builds <b>one chapter</b> in 3 to 5 alternative looks, each as a PDF.</li>
+          <li>You pick one (or adjust it).</li>
+          <li>Galley builds every chapter in the chosen look.</li>
+        </ol>
+        <ul class="check" aria-label="Reference checklist">
+          <li class="req">Manuscript (.docx)</li><li class="req">Trim size</li>
+          <li class="req">Chapter / unit opener</li><li class="req">Body page</li>
+          <li class="req">Example box</li><li class="req">Exercise box</li>
+          <li class="req">Page number / folio</li><li class="req">Fonts</li>
+          <li class="req">Palette</li><li class="opt">Notes / callouts</li>
+          <li class="opt">Running header</li><li class="opt">Side tab</li>
+          <li class="opt">Table style</li><li class="opt">Characters</li>
+          <li class="opt">Illustration style</li><li class="opt">Cover / series look</li>
+        </ul>
+        <p class="legend">■ required · □ optional. References set style parameters; nothing is copied from them onto the page.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <header><span class="eyebrow">Under the hood</span><h2>Built the way a designer would build it.</h2></header>
+    <div class="flow">
+      <div class="step"><span class="file">ingest → content.json</span><h3>Read</h3><p>Word headings, typed markers like “Example 2:” and “Exercise 3.1”, numbered questions, (a)–(d) options, tables, pictures, captions and notes become structured content. Every guess is listed for review.</p></div>
+      <div class="step"><span class="file">style/*.json</span><h3>Specify</h3><p>Trim, margins, fonts, type scale, palette, and a treatment for the opener, headings, example and exercise boxes, notes, folio, header and side tab.</p></div>
+      <div class="step"><span class="file">build_chapter.jsx</span><h3>Build</h3><p>One threaded story. Boxes are paragraph styles with shading and borders, figures are anchored, tables are real tables, keep rules hold boxes together. Spot art sits on its own Illustrations layer.</p></div>
+      <div class="step"><span class="file">qa_export.jsx</span><h3>Check</h3><p>Every page previewed and checked, then exported to PDF and PNG with a short report per look.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <header><span class="eyebrow">QA built in</span><h2>Every page checked, every build.</h2></header>
+    <div class="qa">
+      <div style="--c: var(--cyan)"><h3>Overset text</h3><p>In the main story and inside every table cell.</p></div>
+      <div style="--c: var(--magenta)"><h3>Split boxes</h3><p>Examples, notes, figures with captions and tables must sit on one page. Long exercises may continue, but only between questions.</p></div>
+      <div style="--c: var(--yellow)"><h3>Stranded headings</h3><p>A heading at the foot of a page is moved over to the text it introduces.</p></div>
+      <div style="--c: var(--key)"><h3>Objects off the page</h3><p>Content cut by the trim, anything outside the bleed, anchored art sticking out of the column.</p></div>
+    </div>
+    <p class="fixes">It also flags missing or changed links, images under 150 ppi and empty pages. Many problems are fixed before QA even runs: a figure pushed to the next page is scaled down if that keeps it in place, a table's lead-in travels with the table, and answer options are set on 4, 2 or 1 columns by measuring the set text.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <header><span class="eyebrow">The prototype, today</span><h2>One Word file, three books.</h2><p class="lede">A generic six-page science chapter (headings, a table, two diagrams, three worked examples and activities, three exercises, notes), built end to end on Windows with InDesign 2022.</p></header>
+    <div class="looks">
+      <div class="look">
+        <figure><div class="crop"><img src="img/bright_spread.jpg" alt="Bright Workbook spread with a table, notes, an example box with a pill label and an exercise with four-column options"></div></figure>
+        <div class="meta"><h3>Bright Workbook</h3><p>Rounded type, colour banner opener with a character, shaded boxes with pill labels, round folio, side tab.</p>
+          <dl><dt>Trim</dt><dd>210 × 276 mm</dd><dt>Type</dt><dd>Poppins / Nunito</dd><dt>Pages</dt><dd data-v="bright-pages">5</dd><dt>QA</dt><dd class="pass" data-v="bright-qa">Pass · 0 errors</dd></dl></div>
+      </div>
+      <div class="look">
+        <figure><div class="crop"><img src="img/classic_spread.jpg" alt="Classic Textbook spread with serif text, outlined example box and ruled exercise heading"></div></figure>
+        <div class="meta"><h3>Classic Textbook</h3><p>Serif text, a quiet typographic opener, outlined example boxes, ruled exercise heads, folio on the outer edge.</p>
+          <dl><dt>Trim</dt><dd>189 × 246 mm</dd><dt>Type</dt><dd>Playfair Display / Georgia</dd><dt>Pages</dt><dd data-v="classic-pages">6</dd><dt>QA</dt><dd class="pass" data-v="classic-qa">Pass · 0 errors</dd></dl></div>
+      </div>
+      <div class="look">
+        <figure><div class="crop"><img src="img/modern_spread.jpg" alt="Modern Clean spread with sidebar example boxes and dark exercise bars"></div></figure>
+        <div class="meta"><h3>Modern Clean</h3><p>Geometric sans, a full-bleed band opener with a large number, sidebar boxes, dark exercise bars, folio block on the outer edge.</p>
+          <dl><dt>Trim</dt><dd>203 × 254 mm</dd><dt>Type</dt><dd>Inter / Google Sans</dd><dt>Pages</dt><dd data-v="modern-pages">5</dd><dt>QA</dt><dd class="pass" data-v="modern-qa">Pass · 0 errors</dd></dl></div>
+      </div>
+    </div>
+    <div class="look">
+      <figure><div class="crop"><img src="img/custom_spread.jpg" alt="A fourth look built from the reference checklist: purple palette, Inter and Google Sans, 200 by 260 mm"></div></figure>
+      <div class="meta"><h3>Custom, from the checklist</h3><p>A fourth look made in the web UI: the designer entered trim, fonts and a purple palette from their references over the Bright structure.</p>
+        <dl><dt>Trim</dt><dd>200 × 260 mm</dd><dt>Type</dt><dd>Inter / Google Sans</dd><dt>Pages</dt><dd>7</dd><dt>QA</dt><dd class="pass">Pass · 0 errors</dd></dl></div>
+    </div>
+    <p class="note">Each look builds in under a minute and is a normal InDesign file a designer can keep working in: change the “Example Head” paragraph style and every example in the chapter follows. A local web page walks the designer through the checklist, runs the builds and shows the previews and QA side by side.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="cols3">
+      <div class="card"><span class="eyebrow">Who it's for</span><h3>In-house designers at educational and series publishers</h3><p>Teams producing textbooks, workbooks and revision guides: many chapters, a fixed system of boxes and exercises, and frequent revisions. Designers stay in InDesign; Galley does the repetitive setting and the checking.</p></div>
+      <div class="card"><span class="eyebrow">What's next</span>
+        <ul class="plain">
+          <li><b>InDesign panel</b> (UXP): mode A, and the whole flow without leaving InDesign.</li>
+          <li><b>Reading references</b>: a vision model proposes palette, type scale and box treatments for the designer to approve.</li>
+          <li><b>Claude-assisted tagging</b> for manuscripts without clear markers.</li>
+          <li><b>Whole books</b>: chapter lists, continuous folios, InDesign Book files, contents pages.</li>
+          <li><b>Re-flow after edits</b> that keeps the designer's manual tweaks.</li>
+        </ul></div>
+      <div class="card limits"><span class="eyebrow">Limits, plainly</span>
+        <ul class="plain">
+          <li><b>Illustration needs people or an image model.</b> Galley places art; it doesn't draw characters or diagrams.</li>
+          <li><b>References inform, never copy.</b> They set style parameters only, never another book's artwork or layout.</li>
+          <li><b>Ingest is heuristic.</b> Unusual manuscripts need the review list or tagging help.</li>
+          <li><b>Prototype scope</b>: one chapter per run, Windows only, mode A not built yet, references turned into parameters by the designer.</li>
+        </ul></div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">Galley prototype · InDesign 2022 · ExtendScript + PowerShell + Python · sample content and illustrations are generic and made for this demo</div></footer>

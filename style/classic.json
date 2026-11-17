@@ -1,0 +1,31 @@
+{
+  "id": "classic",
+  "name": "Classic Textbook",
+  "description": "Secondary / reference textbook: serif text, quiet typographic opener, outlined example boxes, ruled exercise heads, folio on the outer edge.",
+  "trim": { "width": 189, "height": 246 },
+  "bleed": 3,
+  "margins": { "top": 24, "bottom": 22, "inside": 20, "outside": 16 },
+  "fonts": {
+    "heading": { "family": "Playfair Display", "bold": "Bold", "semibold": "Bold", "regular": "Regular" },
+    "body": { "family": "Georgia", "regular": "Regular", "bold": "Bold", "italic": "Italic" }
+  },
+  "type": { "body": 10, "leading": 14.5, "h2": 17, "h3": 12, "box_head": 10.5, "small": 8.5, "caption": 8.5, "opener_title": 32, "opener_number": 11, "header": 7.5, "folio": 9 },
+  "palette": {
+    "primary": "#1D3557", "secondary": "#9B2335", "accent": "#C9A227", "ink": "#1E1E1E",
+    "primary_tint": "#E8EEF5", "secondary_tint": "#F6E9EA", "note": "#F3EFE3", "line": "#A7A7A7", "paper": "#FFFFFF"
+  },
+  "opener": { "layout": "minimal", "height": 84, "color": "primary", "label": "CHAPTER", "character": "", "decor": "rules", "objectives": { "fill": "note", "head": "secondary" } },
+  "h2": { "treatment": "rule", "color": "primary", "text": "primary" },
+  "h3": { "treatment": "plain", "color": "secondary" },
+  "example": { "treatment": "outlined", "head": "label", "color": "primary", "fill": "", "radius": 0 },
+  "activity": { "label_color": "primary", "treatment": "outlined", "head": "label", "color": "accent", "fill": "", "radius": 0 },
+  "exercise": { "treatment": "open", "head": "ruled", "color": "secondary", "fill": "", "radius": 0, "answer_lines": "line" },
+  "note": { "treatment": "sidebar", "fill": "note", "label_color": "secondary", "icon": "", "radius": 0 },
+  "table": { "head_fill": "primary", "head_text": "paper", "stroke": "primary", "zebra": "" },
+  "list": { "bullet_color": "secondary" },
+  "folio": { "position": "outer", "shape": "none", "color": "primary", "text": "primary" },
+  "header": { "show": true, "left": "book", "right": "chapter", "rule": true, "color": "primary" },
+  "side_tab": { "show": false },
+  "figures": { "max_width": 0.8, "min_scale": 0.6 },
+  "illustrations": { "gap_min": 55, "max_height": 50, "set": ["magnifier.png", "seedling.png"] }
+}

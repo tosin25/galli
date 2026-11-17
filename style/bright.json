@@ -1,0 +1,31 @@
+{
+  "id": "bright",
+  "name": "Bright Workbook",
+  "description": "Playful primary-school workbook: rounded type, colour banner opener with a character, shaded boxes with pill labels, round folio.",
+  "trim": { "width": 210, "height": 276 },
+  "bleed": 3,
+  "margins": { "top": 22, "bottom": 24, "inside": 18, "outside": 17 },
+  "fonts": {
+    "heading": { "family": "Poppins", "bold": "Bold", "semibold": "SemiBold", "regular": "Regular" },
+    "body": { "family": "Nunito", "regular": "Regular", "bold": "Bold", "italic": "Italic" }
+  },
+  "type": { "body": 11.5, "leading": 17, "h2": 18, "h3": 13.5, "box_head": 11.5, "small": 9.5, "caption": 9, "opener_title": 36, "opener_number": 13, "header": 8, "folio": 10 },
+  "palette": {
+    "primary": "#E8590C", "secondary": "#0B7A75", "accent": "#FFC233", "ink": "#24303F",
+    "primary_tint": "#FFE9D9", "secondary_tint": "#DDF3F0", "note": "#FFF4C4", "line": "#B8C0CC", "paper": "#FFFFFF"
+  },
+  "opener": { "layout": "banner", "height": 92, "color": "primary", "label": "CHAPTER", "character": "pip.png", "decor": "bubbles", "objectives": { "fill": "secondary_tint", "head": "secondary" } },
+  "h2": { "treatment": "band", "color": "primary", "text": "paper" },
+  "h3": { "treatment": "plain", "color": "secondary" },
+  "example": { "treatment": "shaded", "head": "pill", "color": "primary", "fill": "primary_tint", "radius": 3 },
+  "activity": { "label_color": "primary", "treatment": "shaded", "head": "pill", "color": "accent", "head_text": "ink", "fill": "note", "radius": 3 },
+  "exercise": { "treatment": "shaded", "head": "pill", "color": "secondary", "fill": "secondary_tint", "radius": 3, "answer_lines": "line" },
+  "note": { "treatment": "shaded", "fill": "note", "label_color": "primary", "icon": "sun.png", "radius": 3 },
+  "table": { "head_fill": "secondary", "head_text": "paper", "stroke": "secondary", "zebra": "secondary_tint" },
+  "list": { "bullet_color": "primary" },
+  "folio": { "position": "center", "shape": "circle", "color": "primary", "text": "paper" },
+  "header": { "show": true, "left": "book", "right": "chapter", "rule": true, "color": "primary" },
+  "side_tab": { "show": true, "color": "secondary", "text": "paper", "width": 9, "height": 38 },
+  "figures": { "max_width": 0.82, "min_scale": 0.6 },
+  "illustrations": { "gap_min": 42, "max_height": 60, "set": ["seedling.png", "watering_can.png", "magnifier.png", "sun.png"] }
+}
