@@ -12,7 +12,7 @@
   var SMU = app.scriptPreferences.measurementUnit; app.scriptPreferences.measurementUnit = MeasurementUnits.MILLIMETERS;
   doc.recompose();
   var PW = doc.documentPreferences.pageWidth, PH = doc.documentPreferences.pageHeight, BL = doc.documentPreferences.documentBleedTopOffset;
-  var errors = [], warns = [], checks = { overset: 0, split_boxes: 0, stranded_headings: 0, off_page: 0, links: 0, empty_pages: 0 };
+  var errors = [], warns = [], checks = { overset: 0, split_boxes: 0, stranded_headings: 0, off_page: 0, links: 0, empty_pages: 0, widows_orphans: 0, numbering: 0, calc_alignment: 0 };
   function pgName(o) { try { return o.parentPage ? o.parentPage.name : '?'; } catch (e) { return '?'; } }
   function E(check, page, msg) { errors.push({ check: check, page: String(page), msg: msg }); checks[check] = (checks[check] || 0) + 1; }
   function Wn(check, page, msg) { warns.push({ check: check, page: String(page), msg: msg }); }
@@ -32,30 +32,66 @@
   function frameOf(p) { try { return p.parentTextFrames[0]; } catch (e) { return null; } }
   function pageOfText(p) { var f = frameOf(p); return f && f.parentPage ? f.parentPage.name : '?'; }
 
-  // 2. boxes split across frames (box ranges come from the build; otherwise found from style names)
-  // Galley builds keep the ranges on the document; text flowed into a designer's file keeps them on its story
-  var boxes = [];
-  try { var db = eval('(' + doc.extractLabel('galley_boxes') + ')') || []; for (i = 0; i < db.length; i++) { db[i].st = main; boxes.push(db[i]); } } catch (e) {}
-  for (var si = 0; si < stories.length; si++) { var lb = stories[si].extractLabel('galley_boxes'); if (!lb) continue;
-    try { var sb = eval('(' + lb + ')'); for (i = 0; i < sb.length; i++) { sb[i].st = stories[si]; boxes.push(sb[i]); } } catch (e) {} }
-  for (i = 0; i < boxes.length; i++) {
-    var bx = boxes[i], bs = bx.st; if (!bs) continue;
-    try {
-      var p0 = bs.characters[bx.s].paragraphs[0], p1 = bs.characters[Math.max(bx.s, bx.e - 1)].paragraphs[0];
-      var f0 = frameOf(p0), f1 = frameOf(p1);
-      if (bx.kind == 'Table') { var tb = bs.characters[bx.s].tables.length ? bs.characters[bx.s].tables[0] : null;
-        if (tb) { f0 = tb.cells[0].insertionPoints[0].parentTextFrames[0]; f1 = tb.cells[-1].insertionPoints[0].parentTextFrames[0]; } }
-      if (f0 && f1 && f0.id != f1.id) {
-        if (bx.continues) Wn('split_boxes', f0.parentPage.name, bx.kind + ' continues onto page ' + f1.parentPage.name + ' (longer than a page; breaks only between questions)');
-        else E('split_boxes', f0.parentPage.name, bx.kind + ' box split across pages ' + f0.parentPage.name + '-' + f1.parentPage.name + ': ' + clip(p0.contents));
+  // 2. boxes split across frames. Boxes are found from paragraph styles, not from positions saved at build time,
+  // so the check stays right after the designer edits the text. Designer files: the copilot's mapping says which
+  // of their styles belong to which box.
+  var MAP = {}; try { MAP = eval('(' + doc.extractLabel('galley_map') + ')') || {}; } catch (e) {}
+  var ROLEFAM = { example_head: 'Example', example_body: 'Example', example_step: 'Example', activity_head: 'Activity', activity_body: 'Activity',
+    activity_step: 'Activity', exercise_head: 'Exercise', exercise_instruction: 'Exercise', question: 'Exercise', options: 'Exercise', answer_line: 'Exercise',
+    note: 'Note', objectives_head: 'Objectives', objective: 'Objectives' };
+  var shared = {}, FAM = {}, BOXHEAD = {}, r0;
+  for (r0 in MAP) if (r0.charAt(0) != '_' && !ROLEFAM[r0]) shared[MAP[r0]] = 1; // a style also used for plain text marks no box
+  for (r0 in ROLEFAM) if (MAP[r0] && !shared[MAP[r0]]) { FAM[MAP[r0]] = ROLEFAM[r0]; if (/_head$/.test(r0)) BOXHEAD[MAP[r0]] = 1; }
+  function family(n) {
+    if (FAM[n]) return FAM[n];
+    var m = n.match(/^(Example|Activity|Exercise|Objectives)\b/); if (m) return m[1];
+    if (n == 'Objective') return 'Objectives';
+    if (n == 'Note' || n == 'Calculation') return n;
+    return '';
+  }
+  function isBoxHead(n) { return BOXHEAD[n] == 1 || /^(Example|Activity|Exercise|Objectives) Head$/.test(n); }
+  var QSTART = /^\(?(\d{1,3})[.)]?\t/; // where a long exercise may continue: before a numbered question
+  for (var si = 0; si < stories.length; si++) {
+    var SP = stories[si].paragraphs.everyItem().getElements(), runs = [], cur = null;
+    for (var q0 = 0; q0 < SP.length; q0++) {
+      var nm0 = '', f = ''; try { nm0 = SP[q0].appliedParagraphStyle.name; f = family(nm0); } catch (e) {}
+      if (!f) { cur = null; continue; }
+      if (f == 'Note') { runs.push({ f: f, ps: [SP[q0]] }); cur = null; continue; }
+      if (!cur || cur.f != f || isBoxHead(nm0)) { cur = { f: f, ps: [] }; runs.push(cur); }
+      cur.ps.push(SP[q0]);
+    }
+    for (var ri = 0; ri < runs.length; ri++) {
+      var ps = runs[ri].ps, fa = frameOf(ps[0]), fz = frameOf(ps[ps.length - 1]);
+      if (!fa || !fz) continue;
+      var split = fa.id != fz.id || ps[0].parentTextFrames.length > 1 || ps[ps.length - 1].parentTextFrames.length > 1;
+      if (!split) continue;
+      var cont = null; // the first paragraph on the later page
+      for (var pj = 1; pj < ps.length; pj++) if (frameOf(ps[pj]) && frameOf(ps[pj]).id != fa.id) { cont = ps[pj]; break; }
+      var label = runs[ri].f == 'Calc' ? 'Calculation' : runs[ri].f;
+      if (runs[ri].f == 'Exercise' && cont && QSTART.test(cont.contents))
+        Wn('split_boxes', fa.parentPage.name, label + ' continues onto page ' + fz.parentPage.name + ' before question ' + cont.contents.match(QSTART)[1] + ' (allowed: it breaks between questions)');
+      else E('split_boxes', fa.parentPage.name, label + ' box split across pages ' + fa.parentPage.name + '-' + fz.parentPage.name + ': ' + clip(ps[0].contents));
+    }
+    // figures stay with their captions; tables stay whole
+    for (q0 = 0; q0 < SP.length - 1; q0++) {
+      var nmF = ''; try { nmF = SP[q0].appliedParagraphStyle.name; } catch (e) {}
+      if ((nmF == 'Figure' || nmF == MAP.figure) && SP[q0].allGraphics.length) {
+        var capN = ''; try { capN = SP[q0 + 1].appliedParagraphStyle.name; } catch (e) {}
+        if ((capN == 'Caption' || capN == MAP.caption) && frameOf(SP[q0]) && frameOf(SP[q0 + 1]) && frameOf(SP[q0]).id != frameOf(SP[q0 + 1]).id)
+          E('split_boxes', frameOf(SP[q0]).parentPage.name, 'figure and its caption are on different pages: ' + clip(SP[q0 + 1].contents));
       }
-    } catch (e) { Wn('split_boxes', '?', 'could not check box ' + bx.kind + ': ' + e.message); }
+    }
+    var TBL = stories[si].tables.everyItem().getElements();
+    for (var ti = 0; ti < TBL.length; ti++) {
+      try { var c0 = TBL[ti].cells[0].insertionPoints[0].parentTextFrames[0], c1 = TBL[ti].cells[-1].insertionPoints[0].parentTextFrames[0];
+        if (c0 && c1 && c0.id != c1.id) E('split_boxes', c0.parentPage.name, 'table split across pages ' + c0.parentPage.name + '-' + c1.parentPage.name); } catch (e) {}
+    }
   }
   // 3. stranded headings: a heading style that is the last paragraph of a frame while the story continues
   var HEADS = /^(H2|H3|Example Head|Activity Head|Exercise Head|Objectives Head|Chapter Title)$/;
   // a document styled by the designer: the copilot's style mapping says which of their styles are headings
   var HEADNAMES = {};
-  try { var MAP = eval('(' + doc.extractLabel('galley_map') + ')') || {}; var HR = ['h2', 'h3', 'chapter_title', 'example_head', 'activity_head', 'exercise_head', 'objectives_head'];
+  try { var HR = ['h2', 'h3', 'chapter_title', 'example_head', 'activity_head', 'exercise_head', 'objectives_head'];
     for (var hr = 0; hr < HR.length; hr++) if (MAP[HR[hr]]) HEADNAMES[MAP[HR[hr]]] = 1; } catch (e) {}
   function isHead(n) { return HEADS.test(n) || HEADNAMES[n] == 1; }
   for (var sk = 0; sk < stories.length; sk++) {
@@ -63,6 +99,73 @@
     for (i = 0; i < tc.length - 1; i++) {
       try { var lp = tc[i].paragraphs[-1]; if (!tc[i + 1].characters.length || lp.parentTextFrames.length > 1) continue;
         if (isHead(lp.appliedParagraphStyle.name)) E('stranded_headings', tc[i].parentPage.name, 'heading at the foot of the page: ' + clip(lp.contents)); } catch (e) {}
+    }
+  }
+  // ---- house rules ------------------------------------------------------------------------------------
+  // H1. widows and orphans: a paragraph that breaks across pages keeps at least 2 lines on each side
+  function frameId(o) { try { return o.parentTextFrames[0].id; } catch (e) { return -1; } }
+  for (var sw = 0; sw < stories.length; sw++) {
+    var st0 = stories[sw]; if (st0.textContainers.length < 2) continue;
+    var PP = st0.paragraphs.everyItem().getElements();
+    for (var pi = 0; pi < PP.length; pi++) {
+      var pp = PP[pi]; if (pp.parentTextFrames.length < 2) continue;
+      var LL = pp.lines.everyItem().getElements(); if (LL.length < 2) continue;
+      var fA = frameId(LL[0]), nA = 0, fZ = frameId(LL[LL.length - 1]), nZ = 0;
+      for (var li = 0; li < LL.length; li++) { var fi = frameId(LL[li]); if (fi == fA) nA++; if (fi == fZ) nZ++; }
+      var need = Math.min(2, LL.length - 1);
+      if (nA < need) E('widows_orphans', pp.parentTextFrames[0].parentPage.name, 'orphan: only ' + nA + ' line at the foot of the page: ' + clip(pp.contents));
+      else if (nZ < need) E('widows_orphans', pp.parentTextFrames[pp.parentTextFrames.length - 1].parentPage.name, 'widow: only ' + nZ + ' line at the top of the page: ' + clip(pp.contents));
+    }
+  }
+  // H2. numbering: every number from the manuscript is still there, in front of the right text. Each expected
+  // number is stored with the start of its text, and found by that text, so edits elsewhere don't confuse the check.
+  for (var sn = 0; sn < stories.length; sn++) {
+    var labTxt = stories[sn].extractLabel('galley_labels'); if (!labTxt) continue;
+    var want = []; try { want = eval('(' + labTxt + ')'); } catch (e) {}
+    var PN = stories[sn].paragraphs.everyItem().getElements(), at = 0;
+    for (var wi = 0; wi < want.length; wi++) {
+      var parts = String(want[wi]).split('\u0001'), lab = parts[0], txt = parts[1] || '';
+      if (!txt) continue;
+      for (var pn = at; pn < Math.min(PN.length, at + 60); pn++) if (PN[pn].contents.indexOf(txt) >= 0) break;
+      if (pn >= Math.min(PN.length, at + 60)) continue; // text itself was edited: nothing to compare
+      if (PN[pn].contents.indexOf(lab + '\t') != 0)
+        E('numbering', pageOfText(PN[pn]), 'number "' + lab + '" from the manuscript is missing or changed before: ' + clip(txt));
+      at = pn + 1;
+    }
+  }
+  // H2b. a number must fit its number column: the text after the tab starts exactly at the paragraph's indent
+  for (var sh = 0; sh < stories.length; sh++) {
+    var PAR = stories[sh].paragraphs.everyItem().getElements();
+    for (var ph = 0; ph < PAR.length; ph++) {
+      var hp = PAR[ph], tab = hp.contents.indexOf('\t');
+      if (tab < 1 || tab > 8 || !(hp.firstLineIndent < -0.5) || !/^\(?[\dA-Za-z]{1,6}[.)]/.test(hp.contents)) continue;
+      try { var hf = hp.parentTextFrames[0], ch = hp.characters[tab + 1];
+        var want0 = hf.geometricBounds[1] + hf.textFramePreferences.insetSpacing[1] + hp.leftIndent;
+        if (ch && Math.abs(ch.horizontalOffset - want0) > 1.2) E('numbering', hf.parentPage.name, 'number "' + hp.contents.substr(0, tab) + '" is wider than its number column: ' + clip(hp.contents)); } catch (e) {}
+    }
+  }
+  // H3. calculations: a line that starts with "=" (or "Or ... =") puts its "=" under the first "=" of the calculation above
+  function eqX(p) { var k = p.contents.indexOf('='); if (k < 0) return null;
+    try { var f = p.parentTextFrames[0]; return p.characters[k].horizontalOffset - f.geometricBounds[1]; } catch (e) { return null; } }
+  for (var sc = 0; sc < stories.length; sc++) {
+    var PC = stories[sc].paragraphs.everyItem().getElements();
+    for (var pc = 1; pc < PC.length; pc++) {
+      if (!/^\s*(=|Or\b.*=)/.test(PC[pc].contents)) continue;
+      var hd = pc - 1; while (hd > 0 && /^\s*(=|Or\b)/.test(PC[hd].contents)) hd--;
+      var x0 = eqX(PC[hd]), xq = eqX(PC[pc]);
+      if (x0 !== null && xq !== null && Math.abs(xq - x0) > 0.8) E('calc_alignment', pageOfText(PC[pc]), '"=" is ' + Math.abs(xq - x0).toFixed(1) + ' mm off the first "=": ' + clip(PC[pc].contents));
+    }
+  }
+  // H4. no unnecessary empty space: a page that is mostly empty although the text after it could have moved up
+  if (main && main.textContainers.length > 1) {
+    var TC = main.textContainers;
+    for (i = 0; i < TC.length - 1; i++) {
+      try {
+        var tf = TC[i], nf = TC[i + 1]; if (!tf.lines.length || !nf.paragraphs.length) continue;
+        var g = tf.geometricBounds, used = (tf.lines[-1].baseline - g[0]) / (g[2] - g[0]), np = nf.paragraphs[0];
+        var forced = np.startParagraph == StartParagraph.NEXT_FRAME;
+        if (used < 0.6 && !forced) Wn('empty_space', tf.parentPage.name, 'page is only ' + Math.round(used * 100) + '% full; what follows could not move up (box or picture too tall?)');
+      } catch (e) {}
     }
   }
   // 4. objects off the page: outside the bleed = error; content (text, anchored art) outside the margins = warning
@@ -85,7 +188,9 @@
       else if (hasContent && offTrim && !(it instanceof TextFrame && it.contents == '')) E('off_page', (isMaster ? 'master ' : '') + page.name, label + ' is cut by the trim edge');
       else if (out) Wn('off_page', (isMaster ? 'master ' : '') + page.name, label + ' (decoration) extends beyond the bleed');
       else if (!isMaster && it.parent instanceof Character) {
-        if (gb[1] < mL - 1 || gb[3] > PW - mR + 1) Wn('off_page', page.name, 'anchored ' + label + ' sticks out of the text column');
+        var over = Math.max(mL - gb[1], gb[3] - (PW - mR));
+        if (over > 2) E('off_page', page.name, 'anchored ' + label + ' sticks out of the text column by ' + over.toFixed(1) + ' mm (clipped or crowding the margin)');
+        else if (over > 1) Wn('off_page', page.name, 'anchored ' + label + ' touches the margin');
       }
     }
   }

@@ -15,6 +15,7 @@
   var OUT = Folder(arg('galley_out', here + '/out/test')); if (!OUT.exists) OUT.create();
   function readJSON(f) { f.encoding = 'UTF-8'; f.open('r'); var s = f.read(); f.close(); return eval('(' + s + ')'); }
   var D = readJSON(CONTENT), S = readJSON(STYLEF), M = D.meta, BL = D.blocks, BASE = CONTENT.parent;
+  $.evalFile(File(here + '/indesign/house.jsx')); // GalleyHouse: shared house rules
   var LOG = [], i, k;
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
 
@@ -54,7 +55,7 @@
   var csBold = CS('Bold', { fontStyle: FB_.bold });
   var csBullet = CS('Bullet', { fillColor: C(S.list.bullet_color), fontStyle: FB_.bold });
 
-  var body = PS('Body', merge(BF, { fontStyle: FB_.regular, pointSize: T.body, leading: T.leading, fillColor: C('ink'), spaceAfter: 2.4,
+  var body = PS('Body', merge(BF, { fontStyle: FB_.regular, pointSize: T.body, leading: T.leading, tracking: T.tracking || 0, fillColor: C('ink'), spaceAfter: 2.4,
     keepFirstLines: 2, keepLastLines: 2, hyphenation: false, justification: Justification.LEFT_ALIGN }));
   function S2(name, base, extra) { return PS(name, merge({ basedOn: base }, extra)); }
 
@@ -95,6 +96,8 @@
   st.h3 = S2('H3', body, merge(HF, { fontStyle: FH_.semibold, pointSize: T.h3, leading: T.h3 * 1.3, fillColor: C(S.h3.color), spaceBefore: 4, spaceAfter: 2, keepWithNext: 3, keepLinesTogether: true }));
   st.list = S2('List', body, { leftIndent: 6, firstLineIndent: -6, spaceAfter: 1.4, bulletsAndNumberingListType: ListType.BULLET_LIST, bulletsTextAfter: '^t', bulletsCharacterStyle: csBullet });
   try { st.list.bulletChar.characterValue = 8226; } catch (e) {}
+  st.numlist = S2('Numbered List', body, { spaceAfter: 1.4 });
+  st.calc = S2('Calculation', body, { leftIndent: (S.math && S.math.indent) || 10, spaceAfter: 0.8, keepLinesTogether: true });
   st.figure = S2('Figure', body, { justification: Justification.CENTER_ALIGN, spaceBefore: 2, spaceAfter: 1.5, leading: Leading.AUTO, keepWithNext: 2 });
   st.caption = S2('Caption', body, { pointSize: T.caption, leading: T.caption * 1.35, fontStyle: FB_.italic, justification: Justification.CENTER_ALIGN, fillColor: C('ink'), spaceAfter: 4 });
   st.table = S2('Table Anchor', body, { spaceBefore: 1.5, spaceAfter: 4, leading: Leading.AUTO });
@@ -191,7 +194,9 @@
     if (TB && TB.show) {
       var n = parseInt(M.chapter_no, 10) || 1, ty = MT + 18 + ((n - 1) % 5) * (TB.height + 2);
       var gb = left ? [ty, -BLEED, ty + TB.height, TB.width] : [ty, PW - TB.width, ty + TB.height, PW + BLEED];
-      mp.rectangles.add({ geometricBounds: gb, fillColor: C(TB.color), strokeWeight: 0 });
+      // the tab colour can change with each part / theme of the book
+      var tabCol = TB.color_by_part && TB.color_by_part.length && M.part_no ? TB.color_by_part[((parseInt(M.part_no, 10) || 1) - 1) % TB.color_by_part.length] : TB.color;
+      mp.rectangles.add({ geometricBounds: gb, fillColor: C(tabCol), strokeWeight: 0 });
       tf(mp, [ty, left ? 0 : PW - TB.width, ty + TB.height, left ? TB.width : PW], M.chapter_no || '', merge(HF, { fontStyle: FH_.bold, pointSize: 13, fillColor: C(TB.text), justification: Justification.CENTER_ALIGN }));
     }
     // opener master: decorations only (title text stays in the story)
@@ -279,13 +284,14 @@
     flow();
     return s0;
   }
-  function optionsLine(opts, cols) {
-    var avail = FW - EX.L - EX.R - 7, rows = [], q;
+  function optionsLine(opts, cols, indent) {
+    if (indent === undefined) indent = EX.L + 7;
+    var avail = FW - EX.R - indent, rows = [], q;
     for (q = 0; q < opts.length; q += cols) {
       var cells = []; for (var j = q; j < Math.min(q + cols, opts.length); j++) cells.push('(' + String.fromCharCode(97 + j) + ')  ' + opts[j]);
       rows.push(cells.join('\t'));
     }
-    var tabs = []; for (q = 1; q < cols; q++) tabs.push({ alignment: TabStopAlignment.LEFT_ALIGN, position: EX.L + 7 + avail * q / cols });
+    var tabs = []; for (q = 1; q < cols; q++) tabs.push({ alignment: TabStopAlignment.LEFT_ALIGN, position: indent + avail * q / cols });
     return { rows: rows, tabs: tabs };
   }
 
@@ -301,22 +307,76 @@
     BOXES.push({ kind: 'Objectives', s: sObj, e: story.characters.length - 1 });
   }
 
-  // ---------------------------------------------------------------- body
+  // ---------------------------------------------------------------- body (house rules are applied as each paragraph is added,
+  // so the character ranges recorded for boxes and numbers stay exact)
+  var HS = GalleyHouse, LABELS = [], MATH = S.math || {}, NUMS = S.numbering || {};
+  var STACK = (MATH.fractions || 'stacked') == 'stacked';
+  function frac(s0) { if (STACK && /\d\s*\/\s*\d/.test(para(s0).contents)) { flow(); HS.stackFractions(para(s0), C('ink'), LOG); } return s0; }
+  function calcLines(s0, lines, style) {
+    // "=" continuation lines sit under the first "=" of their calculation
+    if (!lines || !lines.length) return s0;
+    var cs = [], last = s0;
+    for (var q = 0; q < lines.length; q++) { last = add(lines[q], style); cs.push(last); frac(last); }
+    flow(); var ps = []; for (q = 0; q < cs.length; q++) ps.push(para(cs[q]));
+    if (!HS.alignCalc(para(s0), ps, flow)) LOG.push('calc without "=": ' + para(s0).contents.substr(0, 30));
+    BOXES.push({ kind: 'Calc', s: s0, e: story.characters.length - 1 });
+    return last;
+  }
+  function colsum(b, style, indent) {
+    var rows = HS.columnSumRows(b.head, b.rows), s1 = story.characters.length, made = [];
+    for (var q = 0; q < rows.length; q++) made.push(add(rows[q].text, style));
+    flow();
+    for (q = 0; q < rows.length; q++) HS.columnSumFormat(para(made[q]), b.head.length, indent, MATH.column_width || 9, C('ink'), rows[q].answer, rows[q].head);
+    flow(); BOXES.push({ kind: 'Calc', s: s1, e: story.characters.length - 1 });
+  }
+  function diagram(d, style, maxW) {
+    var s1 = add('', style);
+    try { HS.drawDiagram(doc, story, s1, d, maxW, FH * 0.45, { ink: C('ink'), color: function (hx) { return hexColor(hx); }, font: FB_.family, fontStyle: FB_.regular, textPt: T.body }, flow); }
+    catch (e) { LOG.push('diagram: ' + e.message); }
+    BOXES.push({ kind: 'Diagram', s: s1, e: story.characters.length - 1 });
+    return s1;
+  }
+  function hexColor(hx) { var nm = 'Galley ' + hx.toUpperCase(), c = doc.colors.itemByName(nm);
+    return c.isValid ? c : doc.colors.add({ name: nm, model: ColorModel.PROCESS, space: ColorSpace.RGB, colorValue: rgb(hx) }); }
+  function numbered(label, text, style, indent, hangW, csN) {
+    var s1 = add(label + '\t' + text, style);
+    try { var p = para(s1); p.leftIndent = indent + hangW; p.firstLineIndent = -hangW; p.tabList = [{ alignment: TabStopAlignment.LEFT_ALIGN, position: indent + hangW }]; } catch (e) {}
+    if (csN) charStyle(s1, label.length, csN);
+    LABELS.push(label + '\u0001' + String(text).substr(0, 24)); return s1; // number + start of its text, for QA
+  }
   for (var bi = 0; bi < BL.length; bi++) {
     var b = BL[bi], s0;
     if (b.type == 'h2') add(b.text, st.h2);
     else if (b.type == 'h3') add(b.text, st.h3);
-    else if (b.type == 'body') { s0 = add(b.text, body); if (b.lead_in) para(s0).keepWithNext = 2; }
+    else if (b.type == 'body') { s0 = frac(add(b.text, body)); calcLines(s0, b.calc, st.calc); if (b.lead_in) para(s0).keepWithNext = 2; }
+    else if (b.type == 'list' && b.ordered) {
+      // numbered points stay numbered, in a number column with a clear gap (hanging indent)
+      var lab = []; for (k = 0; k < b.items.length; k++) lab.push(b.items[k].label);
+      var hw = HS.hang(lab, T.body, NUMS.hang || 7);
+      for (k = 0; k < b.items.length; k++) { s0 = numbered(b.items[k].label, b.items[k].text, st.numlist, b.items[k].level ? hw : 0, hw, csNum); if (k < b.items.length - 1) para(s0).keepWithNext = 1; }
+      para(s0).spaceAfter = 3.5;
+    }
     else if (b.type == 'list') { for (k = 0; k < b.items.length; k++) { s0 = add(b.items[k], st.list); if (k < b.items.length - 1) para(s0).keepWithNext = 1; } para(s0).spaceAfter = 3.5; }
     else if (b.type == 'figure') { var fs0 = figure(b, st.figure, st.caption, FW * (S.figures && S.figures.max_width ? S.figures.max_width : 0.82)); BOXES.push({ kind: 'Figure', s: fs0, e: story.characters.length - 1 }); }
     else if (b.type == 'table') { var ts0 = table(b); BOXES.push({ kind: 'Table', s: ts0, e: story.characters.length - 1 }); }
+    else if (b.type == 'diagram') diagram(b, st.figure, FW * 0.9);
+    else if (b.type == 'colsum') colsum(b, st.calc, MATH.indent || 10);
+    else if (b.type == 'rule') {
+      // a rule is styled strongly (example-box style); its examples plainer, in bold body text
+      var RX = BX.example, rs = story.characters.length;
+      add(b.title, RX.head); frac(add(b.text, RX.body));
+      for (k = 0; k < b.examples.length; k++) { s0 = frac(add(b.examples[k], body)); try { para(s0).fontStyle = FB_.bold; para(s0).leftIndent = RX.L; } catch (e) {} }
+      BOXES.push({ kind: 'Rule', s: rs, e: story.characters.length - 1 });
+    }
     else if (b.type == 'note') {
       s0 = labelled(b.label, b.text, st.note, csNote, '  ');
+      // teaching notes: bold label, italic body
+      if (b.kind == 'teaching' && N.teaching_italic !== false) HS.italicBody(para(s0), b.label.length, FB_.italic);
       if (N.icon) {
         var ic = anchorImage(s0, File(ART + '/' + N.icon), 6.5, 6.5);
         // inline icon hanging in the note's left indent: travels with the text, never leaves the column
         try { ic.anchoredObjectSettings.anchoredPosition = AnchorPosition.INLINE_POSITION; ic.anchoredObjectSettings.anchorYoffset = -1.6;
-          story.insertionPoints[s0 + 1].contents = '	'; set(para(s0), { leftIndent: 13, firstLineIndent: -9.5 }); } catch (e) { LOG.push('icon: ' + e.message); }
+          story.insertionPoints[s0 + 1].contents = '\t'; set(para(s0), { leftIndent: 13, firstLineIndent: -9.5 }); } catch (e) { LOG.push('icon: ' + e.message); }
       }
       BOXES.push({ kind: 'Note', s: s0, e: story.characters.length - 1 });
     }
@@ -324,24 +384,42 @@
       var X = b.kind == 'activity' ? BX.activity : BX.example, xs = story.characters.length;
       var ttl = b.title ? b.label + (X.cfg.head == 'pill' ? '  ' + String.fromCharCode(8226) + '  ' : ':  ') + b.title : b.label;
       add(ttl, X.head);
+      var exLabels = []; for (k = 0; k < b.items.length; k++) if (b.items[k].type == 'item') exLabels.push(NUMS.example_roman_to_arabic && b.items[k].kind == 'roman' ? HS.toArabic(b.items[k].label) : b.items[k].label);
+      var exHang = HS.hang(exLabels, T.body, NUMS.hang || 7);
       for (k = 0; k < b.items.length; k++) {
         var it = b.items[k];
-        if (it.type == 'step') labelled(it.label + ':', it.text, X.step, X.label);
+        if (it.type == 'step') { s0 = frac(labelled(it.label + ':', it.text, X.step, X.label)); calcLines(s0, it.calc, X.step); }
+        else if (it.type == 'item') {
+          var lb = NUMS.example_roman_to_arabic && it.kind == 'roman' ? HS.toArabic(it.label) : it.label;
+          s0 = frac(numbered(lb, it.text, X.body, X.L, exHang, X.label)); calcLines(s0, it.calc, X.body);
+        }
         else if (it.type == 'figure') figure(it, X.fig, X.cap, FW * 0.6);
+        else if (it.type == 'diagram') diagram(it, X.fig, FW - X.L - X.R - 4);
+        else if (it.type == 'colsum') colsum(it, X.body, X.L + (MATH.indent || 10));
         else if (it.type == 'list') for (var li = 0; li < it.items.length; li++) add(it.items[li], X.list);
-        else add(it.text, X.body);
+        else { s0 = frac(add(it.text, X.body)); calcLines(s0, it.calc, X.body); }
       }
       BOXES.push({ kind: X.kind, s: xs, e: story.characters.length - 1 });
     }
     else if (b.type == 'exercise') {
-      var es = story.characters.length, grp = [];
+      var es = story.characters.length, grp = [], firstQ = true;
       add(b.label + (b.title ? ':  ' + b.title : ''), EX.head);
+      // number columns sized to the widest number at each level, so the text always starts after a clear gap
+      var l0 = [], l1 = [];
+      for (k = 0; k < b.items.length; k++) if (b.items[k].type == 'question') (b.items[k].level ? l1 : l0).push(b.items[k].label || (b.items[k].n ? b.items[k].n + '.' : String.fromCharCode(8226)));
+      var h0 = HS.hang(l0, T.body, NUMS.hang || 7), h1 = HS.hang(l1, T.body, 6);
       for (k = 0; k < b.items.length; k++) {
         var q = b.items[k];
-        if (q.type == 'instruction') { s0 = add(q.text, EX.step); charStyle(s0, q.text.length, csBold); para(s0).keepWithNext = 2; continue; }
-        var qs = add((q.n ? q.n + '.' : String.fromCharCode(8226)) + '\t' + q.text, st.question), qn = (q.n ? q.n + '.' : '').length;
-        if (qn) charStyle(qs, qn, csNum);
-        var lastP = qs;
+        if (q.type == 'instruction') { s0 = add(q.text, EX.step); charStyle(s0, q.text.length, csBold); para(s0).keepWithNext = 2; calcLines(s0, q.calc, EX.step); continue; }
+        if (q.type == 'diagram') { var dg = diagram(q, EX.body, FW - EX.L - EX.R - h0 - 4); try { para(dg).leftIndent = EX.L + h0; } catch (e) {}
+          if (grp.length) grp[grp.length - 1][1] = dg; continue; }
+        if (q.type == 'colsum') { colsum(q, EX.body, EX.L + h0); continue; }
+        var qlabel = q.label || (q.n ? q.n + '.' : String.fromCharCode(8226)), lvl = q.level ? 1 : 0;
+        var qs = frac(numbered(qlabel, q.text, st.question, EX.L + (lvl ? h0 : 0), lvl ? h1 : h0, csNum));
+        if (!lvl && !firstQ) para(qs).spaceBefore = S.exercise.group_space || 2.2; // the same gap before every question group
+        firstQ = false;
+        var lastP = calcLines(qs, q.calc, st.question);
+        var qIndent = para(qs).leftIndent;
         if (q.options && q.options.length) {
           para(qs).keepWithNext = 2;
           // answer options on tab columns: try 4 (or fewer) columns, then 2, then 1, and keep the first layout where
@@ -349,14 +427,14 @@
           var tries = [Math.min(4, q.options.length), 2, 1];
           for (var ti = 0; ti < tries.length; ti++) {
             if (ti > 0 && tries[ti] >= tries[ti - 1]) continue;
-            var ol = optionsLine(q.options, tries[ti]), rowStarts = [], fits = true;
+            var ol = optionsLine(q.options, tries[ti], qIndent), rowStarts = [], fits = true;
             for (var oi = 0; oi < ol.rows.length; oi++) { lastP = add(ol.rows[oi], st.options); rowStarts.push(lastP);
-              try { para(lastP).tabList = ol.tabs; } catch (e) {} if (oi < ol.rows.length - 1) para(lastP).keepWithNext = 2; }
+              try { para(lastP).leftIndent = qIndent; para(lastP).tabList = ol.tabs; } catch (e) {} if (oi < ol.rows.length - 1) para(lastP).keepWithNext = 2; }
             if (tries[ti] == 1) break;
             flow();
             for (oi = 0; oi < rowStarts.length && fits; oi++) {
               var rp = para(rowStarts[oi]); if (rp.lines.length > 1) { fits = false; break; }
-              var x0 = rp.insertionPoints[0].horizontalOffset - EX.L - 7, chars = rp.characters, tn = 0;
+              var x0 = rp.insertionPoints[0].horizontalOffset - qIndent, chars = rp.characters, tn = 0;
               for (var ci = 0; ci < chars.length - 1; ci++) if (chars[ci].contents == '\t') {
                 if (Math.abs(chars[ci + 1].horizontalOffset - x0 - ol.tabs[tn].position) > 1) { fits = false; break; } tn++; }
             }
@@ -365,7 +443,7 @@
           }
         }
         var nl = { lines1: 1, lines2: 2, lines3: 3 }[q.answer] || 0;
-        for (var al = 0; al < nl; al++) { para(lastP).keepWithNext = 2; lastP = add(String.fromCharCode(160), st.answer); }
+        for (var al = 0; al < nl; al++) { para(lastP).keepWithNext = 2; lastP = add(String.fromCharCode(160), st.answer); try { para(lastP).leftIndent = qIndent; } catch (e) {} }
         if (nl) para(lastP).spaceAfter = 3;
         grp.push([qs, lastP]);
       }
@@ -470,6 +548,9 @@
     }
     flow(); if (!moved) break;
   }
+  // no widows or orphans anywhere; a section that would only just start at the foot of a page moves to the next page
+  GalleyHouse.keepLines(story, (S.flow && S.flow.keep_lines) || 2); flow();
+  if (!S.flow || S.flow.move_cut_sections !== false) GalleyHouse.moveCutSections(story, function (n) { return n == 'H2' || n == 'H3'; }, FH, flow, LOG);
   // drop empty pages at the end
   while (doc.pages.length > 1 && last.characters.length == 0 && last.previousTextFrame) { var pg = last.parentPage, pv = last.previousTextFrame; last.remove(); pg.remove(); last = pv; doc.recompose(); }
 
@@ -506,6 +587,8 @@
   var boxesOut = [];
   for (k = 0; k < BOXES.length; k++) boxesOut.push('{"kind":"' + BOXES[k].kind + '","s":' + BOXES[k].s + ',"e":' + BOXES[k].e + ',"continues":' + (BOXES[k].continues ? 'true' : 'false') + '}');
   doc.insertLabel('galley_boxes', '[' + boxesOut.join(',') + ']');
+  var labOut = []; for (k = 0; k < LABELS.length; k++) labOut.push('"' + String(LABELS[k]).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\u0001/g, '\\u0001') + '"');
+  story.insertLabel('galley_labels', '[' + labOut.join(',') + ']');
   doc.insertLabel('galley_style', S.id);
   LOG.push('pages=' + doc.pages.length + ' overset=' + story.overflows);
   var docName = (S.id || 'chapter') + '_chapter';

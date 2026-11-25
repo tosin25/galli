@@ -1,6 +1,7 @@
 """Smoke test for the copilot path ("continue in my style"). Needs InDesign open.
 
-    python tests/smoke_copilot.py
+    python tests/smoke_copilot.py                              # the plants chapter
+    python tests/smoke_copilot.py work/maths/content.json      # the maths chapter (numbers, calculations, diagrams)
 
 1. builds the designer fixture (samples/make_designer_sample.jsx) -> work/designer_sample.indd
 2. reads status and suggests a style mapping; checks the key roles are matched
@@ -36,7 +37,8 @@ def main():
             fails.append('mapping %s -> %r, expected %r' % (role, m.get(role), want))
     if not os.path.exists(os.path.join(G, 'work', 'content.json')):
         os.system('python "%s" "%s" "%s"' % (os.path.join(G, 'ingest', 'ingest.py'), os.path.join(G, 'samples', 'plants_chapter.docx'), os.path.join(G, 'work')))
-    flow = bridge.flow_manuscript(os.path.join(G, 'work', 'content.json'), m)
+    content = sys.argv[1] if len(sys.argv) > 1 else os.path.join(G, 'work', 'content.json')
+    flow = bridge.flow_manuscript(os.path.abspath(content), m)
     if not flow.get('ok'):
         sys.exit('flow failed: %s' % flow)
     print('flowed: pages %s-%s (%d added), overset=%s' % (flow['firstPage'], flow['lastPage'], flow['pagesAdded'], flow['overset']))

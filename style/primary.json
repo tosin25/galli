@@ -1,0 +1,35 @@
+{
+  "id": "primary",
+  "name": "Primary Workbook",
+  "description": "Primary-school maths and literacy workbook: large spaced body text, no running header (footer folio and a side tab whose colour changes per part), stacked fractions, aligned calculations, drawn diagrams.",
+  "trim": { "width": 184.15, "height": 247.65 },
+  "bleed": 3,
+  "margins": { "top": 18, "bottom": 22, "inside": 17, "outside": 15 },
+  "fonts": {
+    "heading": { "family": "Poppins", "bold": "Bold", "semibold": "SemiBold", "regular": "Regular" },
+    "body": { "family": "Nunito", "regular": "Regular", "bold": "Bold", "italic": "Italic" }
+  },
+  "type": { "body": 14, "leading": 21, "tracking": 25, "h2": 18, "h3": 15, "box_head": 14, "small": 11, "caption": 10.5, "opener_title": 30, "opener_number": 12, "header": 8, "folio": 11 },
+  "palette": {
+    "primary": "#2563A8", "secondary": "#1E8A5A", "accent": "#F2A33A", "ink": "#1F2A44",
+    "primary_tint": "#E1ECF8", "secondary_tint": "#DFF3E8", "note": "#FFF3C4", "line": "#B9BEC9", "paper": "#FFFFFF",
+    "part2": "#8B4FB8", "part3": "#D9534F"
+  },
+  "opener": { "layout": "banner", "height": 78, "color": "primary", "label": "UNIT", "character": "", "decor": "bubbles", "objectives": { "fill": "secondary_tint", "head": "secondary" } },
+  "h2": { "treatment": "band", "color": "primary", "text": "paper" },
+  "h3": { "treatment": "plain", "color": "secondary" },
+  "example": { "treatment": "shaded", "head": "pill", "color": "primary", "fill": "primary_tint", "radius": 3 },
+  "activity": { "label_color": "primary", "treatment": "shaded", "head": "pill", "color": "accent", "head_text": "ink", "fill": "note", "radius": 3 },
+  "exercise": { "treatment": "shaded", "head": "pill", "color": "secondary", "fill": "secondary_tint", "radius": 3, "answer_lines": "line", "group_space": 2.5 },
+  "note": { "treatment": "shaded", "fill": "note", "label_color": "primary", "icon": "", "radius": 3, "teaching_italic": true },
+  "table": { "head_fill": "secondary", "head_text": "paper", "stroke": "secondary", "zebra": "secondary_tint" },
+  "list": { "bullet_color": "primary" },
+  "folio": { "position": "center", "shape": "circle", "color": "primary", "text": "paper" },
+  "header": { "show": false },
+  "side_tab": { "show": true, "color": "primary", "color_by_part": ["primary", "part2", "secondary", "part3"], "text": "paper", "width": 9, "height": 34 },
+  "figures": { "max_width": 0.8, "min_scale": 0.6 },
+  "flow": { "keep_lines": 2, "move_cut_sections": true },
+  "numbering": { "hang": 8, "example_roman_to_arabic": true },
+  "math": { "fractions": "stacked", "indent": 10, "column_width": 10 },
+  "illustrations": { "gap_min": 45, "max_height": 55, "set": ["seedling.png", "magnifier.png", "sun.png"] }
+}

@@ -31,6 +31,11 @@ ROLES = [
     ('question', 'Question', True, [r'exercise ?q\b', r'question', r'^q\b', r'exercise.*(item|q)']),
     ('options', 'Answer options (a)(b)(c)', False, [r'option', r'choice', r'answer.*opt']),
     ('answer_line', 'Answer line', False, [r'answer.*line', r'write.*line', r'^line']),
+    ('numbered_list', 'Numbered list', False, [r'number(ed)? ?list', r'^num', r'ordered']),
+    ('calc', 'Calculation lines', False, [r'calc', r'working', r'sum\b', r'math']),
+    ('rule_head', 'Rule heading ("Addition Rule")', False, [r'rule.*(head|title)', r'^rule$']),
+    ('rule_body', 'Rule text', False, [r'rule.*(text|body)']),
+    ('teaching_note', 'Teaching note', False, [r'teach', r'teacher']),
 ]
 CHAR_ROLES = [
     ('note_label', 'Note label ("Tip:")', [r'label', r'note.*(label|head)', r'bold']),

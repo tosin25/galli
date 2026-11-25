@@ -9,6 +9,7 @@
   function readJSON(f) { f.encoding = 'UTF-8'; f.open('r'); var s = f.read(); f.close(); return eval('(' + s + ')'); }
   var CONTENT = File(arg('galley_content', '')), MAP = eval('(' + arg('galley_map', '{}') + ')');
   var D = readJSON(CONTENT), M = D.meta, BL = D.blocks, BASE = CONTENT.parent;
+  $.evalFile(File(File($.fileName).parent + '/house.jsx')); // GalleyHouse: shared house rules
   var doc = app.activeDocument, LOG = [], USED = {}, FALLBACK = {}, k, i;
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
   // work in mm, restore the designer's units at the end
@@ -24,7 +25,8 @@
     example_head: ['h3', 'h2'], example_body: ['body'], example_step: ['example_body', 'body'],
     activity_head: ['example_head', 'h3'], activity_body: ['example_body', 'body'], activity_step: ['activity_body', 'example_step', 'example_body', 'body'],
     exercise_head: ['example_head', 'h3'], exercise_instruction: ['exercise_body', 'body'], exercise_body: ['body'],
-    question: ['exercise_body', 'body'], options: ['question', 'exercise_body', 'body'], answer_line: [] };
+    question: ['exercise_body', 'body'], options: ['question', 'exercise_body', 'body'], answer_line: [],
+    numbered_list: ['list', 'body'], calc: ['body'], rule_head: ['example_head', 'h3'], rule_body: ['example_body', 'body'], teaching_note: ['note'] };
   var byName = {}, all = doc.allParagraphStyles;
   for (i = 0; i < all.length; i++) if (!byName[all[i].name]) byName[all[i].name] = all[i];
   var cAll = doc.allCharacterStyles, cByName = {};
@@ -118,33 +120,98 @@
     BOXES.push({ kind: 'Objectives', s: os, e: story.characters.length - 1 });
   }
   var bullet = function (role) { return has(role) ? '' : String.fromCharCode(8226) + '\t'; };
+  // ---- house rules, applied as each paragraph is added (shared with Galley's own builder: indesign/house.jsx)
+  var HS = GalleyHouse, LABELS = [];
+  var INK = doc.swatches.itemByName('Black');
+  function hexColor(hx) { var nm = 'Galley ' + hx.toUpperCase(), c = doc.colors.itemByName(nm); if (c.isValid) return c;
+    return doc.colors.add({ name: nm, model: ColorModel.PROCESS, space: ColorSpace.RGB, colorValue: [parseInt(hx.substr(1, 2), 16), parseInt(hx.substr(3, 2), 16), parseInt(hx.substr(5, 2), 16)] }); }
+  function frac(s0) { if (MAP._fractions != 'inline' && /\d\s*\/\s*\d/.test(para(s0).contents)) { flow(); HS.stackFractions(para(s0), INK, LOG); } return s0; }
+  function calcLines(s0, lines, role) {
+    if (!lines || !lines.length) return s0;
+    var ps = [], last = s0;
+    for (var q = 0; q < lines.length; q++) { last = frac(add(lines[q], role)); ps.push(para(last)); }
+    flow(); HS.alignCalc(para(s0), ps, flow);
+    BOXES.push({ kind: 'Calc', s: s0, e: story.characters.length - 1 });
+    return last;
+  }
+  function colsum(b, role) {
+    var rows = HS.columnSumRows(b.head, b.rows), s1 = story.characters.length, made = [];
+    for (var q = 0; q < rows.length; q++) made.push(add(rows[q].text, role));
+    flow(); var base = 0; try { base = para(made[0]).leftIndent; } catch (e) {}
+    for (q = 0; q < rows.length; q++) HS.columnSumFormat(para(made[q]), b.head.length, base + 8, 9, INK, rows[q].answer, rows[q].head);
+    flow(); BOXES.push({ kind: 'Calc', s: s1, e: story.characters.length - 1 });
+  }
+  function diagram(d, role, maxW) {
+    var s1 = add('', role), bs = styleFor('body'), fnt = 'Arial', fst = 'Regular', pt = 10;
+    try { fnt = bs.appliedFont; fst = bs.fontStyle; pt = bs.pointSize; } catch (e) {}
+    try { HS.drawDiagram(doc, story, s1, d, maxW, FH * 0.45, { ink: INK, color: hexColor, font: fnt, fontStyle: fst, textPt: pt }, flow); }
+    catch (e) { LOG.push('diagram: ' + e.message); }
+    BOXES.push({ kind: 'Diagram', s: s1, e: story.characters.length - 1 });
+    return s1;
+  }
+  // a number column wide enough for the widest number, but never narrower than the designer's own hanging indent
+  function numbered(label, text, role, extraIndent, hangW) {
+    var s1 = add(label + '\t' + text, role), p = para(s1);
+    try { var base = p.leftIndent + p.firstLineIndent, own = -p.firstLineIndent, w = Math.max(own, hangW || 0);
+      p.leftIndent = base + (extraIndent || 0) + w; p.firstLineIndent = -w; p.tabList = [{ alignment: TabStopAlignment.LEFT_ALIGN, position: p.leftIndent }]; } catch (e) {}
+    var cs = cstyle('question_number'); if (cs) try { story.characters.itemByRange(s1, s1 + label.length - 1).appliedCharacterStyle = cs; } catch (e) {}
+    LABELS.push(label + '\u0001' + String(text).substr(0, 24)); return s1;
+  }
+  var BODYPT = 10; try { BODYPT = styleFor('body').pointSize; } catch (e) {}
   for (var bi = 0; bi < BL.length; bi++) {
     var b = BL[bi], s0;
     if (b.type == 'h2') add(b.text, 'h2');
     else if (b.type == 'h3') add(b.text, 'h3');
-    else if (b.type == 'body') { s0 = add(b.text, 'body'); if (b.lead_in) para(s0).keepWithNext = 2; }
+    else if (b.type == 'body') { s0 = frac(add(b.text, 'body')); calcLines(s0, b.calc, 'calc'); if (b.lead_in) para(s0).keepWithNext = 2; }
+    else if (b.type == 'list' && b.ordered) {
+      var labs = []; for (k = 0; k < b.items.length; k++) labs.push(b.items[k].label);
+      var hw = HS.hang(labs, BODYPT, 6);
+      for (k = 0; k < b.items.length; k++) { s0 = numbered(b.items[k].label, b.items[k].text, 'numbered_list', b.items[k].level ? hw : 0, hw); if (k < b.items.length - 1) para(s0).keepWithNext = 1; }
+    }
     else if (b.type == 'list') for (k = 0; k < b.items.length; k++) { s0 = add(bullet('list') + b.items[k], 'list'); if (k < b.items.length - 1) para(s0).keepWithNext = 1; }
     else if (b.type == 'figure') { s0 = figure(b, COLW * 0.85); BOXES.push({ kind: 'Figure', s: s0, e: story.characters.length - 1 }); }
     else if (b.type == 'table') { s0 = table(b); BOXES.push({ kind: 'Table', s: s0, e: story.characters.length - 1 }); }
-    else if (b.type == 'note') { s0 = labelled(b.label, b.text, 'note', 'note_label'); BOXES.push({ kind: 'Note', s: s0, e: story.characters.length - 1 }); }
+    else if (b.type == 'diagram') diagram(b, 'figure', COLW * 0.9);
+    else if (b.type == 'colsum') colsum(b, 'calc');
+    else if (b.type == 'rule') {
+      var rs = story.characters.length; add(b.title, 'rule_head'); frac(add(b.text, 'rule_body'));
+      for (k = 0; k < b.examples.length; k++) { s0 = frac(add(b.examples[k], 'body')); try { para(s0).fontStyle = 'Bold'; } catch (e) {} }
+      BOXES.push({ kind: 'Rule', s: rs, e: story.characters.length - 1 });
+    }
+    else if (b.type == 'note') {
+      var nrole = b.kind == 'teaching' && has('teaching_note') ? 'teaching_note' : 'note';
+      s0 = labelled(b.label, b.text, nrole, 'note_label');
+      if (b.kind == 'teaching' && MAP._teaching_italic !== false) HS.italicBody(para(s0), b.label.length, 'Italic');
+      BOXES.push({ kind: 'Note', s: s0, e: story.characters.length - 1 });
+    }
     else if (b.type == 'example') {
       var act = b.kind == 'activity', P = act ? 'activity_' : 'example_', xs = story.characters.length;
       add(b.title ? b.label + ': ' + b.title : b.label, P + 'head');
+      var exl = []; for (k = 0; k < b.items.length; k++) if (b.items[k].type == 'item') exl.push(MAP._roman_examples_to_arabic && b.items[k].kind == 'roman' ? HS.toArabic(b.items[k].label) : b.items[k].label);
+      var exh = HS.hang(exl, BODYPT, 6);
       for (k = 0; k < b.items.length; k++) { var it = b.items[k];
-        if (it.type == 'step') labelled(it.label + ':', it.text, P + 'step', 'step_label');
+        if (it.type == 'step') { s0 = frac(labelled(it.label + ':', it.text, P + 'step', 'step_label')); calcLines(s0, it.calc, P + 'body'); }
+        else if (it.type == 'item') { s0 = frac(numbered(MAP._roman_examples_to_arabic && it.kind == 'roman' ? HS.toArabic(it.label) : it.label, it.text, P + 'body', 0, exh)); calcLines(s0, it.calc, P + 'body'); }
         else if (it.type == 'figure') figure(it, COLW * 0.6);
+        else if (it.type == 'diagram') diagram(it, P + 'body', COLW * 0.85);
+        else if (it.type == 'colsum') colsum(it, P + 'body');
         else if (it.type == 'list') for (var li = 0; li < it.items.length; li++) add(bullet('list') + it.items[li], P + 'body');
-        else add(it.text, P + 'body'); }
+        else { s0 = frac(add(it.text, P + 'body')); calcLines(s0, it.calc, P + 'body'); } }
       BOXES.push({ kind: act ? 'Activity' : 'Example', s: xs, e: story.characters.length - 1 });
     }
     else if (b.type == 'exercise') {
       var es = story.characters.length, grp = [];
       add(b.label + (b.title ? ': ' + b.title : ''), 'exercise_head');
+      var l0 = [], l1 = [];
+      for (k = 0; k < b.items.length; k++) if (b.items[k].type == 'question') (b.items[k].level ? l1 : l0).push(b.items[k].label || (b.items[k].n ? b.items[k].n + '.' : String.fromCharCode(8226)));
+      var h0 = HS.hang(l0, BODYPT, 6), h1 = HS.hang(l1, BODYPT, 6);
       for (k = 0; k < b.items.length; k++) {
         var q = b.items[k];
-        if (q.type == 'instruction') { s0 = add(q.text, 'exercise_instruction'); para(s0).keepWithNext = 2; continue; }
-        var qs = add((q.n ? q.n + '.' : String.fromCharCode(8226)) + '\t' + q.text, 'question'), lastP = qs;
-        if (cstyle('question_number') && q.n) try { story.characters.itemByRange(qs, qs + q.n.length).appliedCharacterStyle = cstyle('question_number'); } catch (e) {}
+        if (q.type == 'instruction') { s0 = add(q.text, 'exercise_instruction'); para(s0).keepWithNext = 2; calcLines(s0, q.calc, 'exercise_instruction'); continue; }
+        if (q.type == 'diagram') { var dg = diagram(q, 'question', COLW * 0.8); if (grp.length) grp[grp.length - 1][1] = dg; continue; }
+        if (q.type == 'colsum') { colsum(q, 'question'); continue; }
+        var ql = q.label || (q.n ? q.n + '.' : String.fromCharCode(8226));
+        var qs = frac(numbered(ql, q.text, 'question', q.level ? h0 : 0, q.level ? h1 : h0)), lastP = calcLines(qs, q.calc, 'question');
         if (q.options && q.options.length) {
           para(qs).keepWithNext = 2;
           // options on tab columns: 4, then 2, then 1, measured on the designer's own type
@@ -204,11 +271,16 @@
     } catch (e) {}
     flow(); if (!moved) break;
   }
+  // no widows or orphans; a section that would only just start at the foot of a page moves to the next page
+  HS.keepLines(story, MAP._keep_lines || 2); flow();
+  if (MAP._move_cut_sections !== false) HS.moveCutSections(story, function (n) { return n == MAP.h2 || n == MAP.h3; }, FH, flow, LOG);
   while (last.characters.length == 0 && last.previousTextFrame) { var pg = last.parentPage, pv = last.previousTextFrame; last.remove(); pg.remove(); last = pv; doc.recompose(); }
 
   // ---------------------------------------------------------------- remember what was built, for QA and the next chapter
   var bo = []; for (k = 0; k < BOXES.length; k++) bo.push('{"kind":"' + BOXES[k].kind + '","s":' + BOXES[k].s + ',"e":' + BOXES[k].e + ',"continues":' + (BOXES[k].continues ? 'true' : 'false') + '}');
   story.insertLabel('galley_boxes', '[' + bo.join(',') + ']');
+  var lo = []; for (k = 0; k < LABELS.length; k++) lo.push('"' + String(LABELS[k]).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\u0001/g, '\\u0001') + '"');
+  story.insertLabel('galley_labels', '[' + lo.join(',') + ']');
   doc.insertLabel('galley_map', arg('galley_map', '{}'));
   doc.viewPreferences.horizontalMeasurementUnits = VH; doc.viewPreferences.verticalMeasurementUnits = VV; doc.viewPreferences.rulerOrigin = RO;
   doc.recompose();
