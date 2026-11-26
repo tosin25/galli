@@ -1,7 +1,23 @@
 # Hand-over: continuing Galley on a Mac
 
-Written 2026-11-25 on the Windows PC, for the next Claude Code session (on a MacBook). Read this first,
-then README.md, TESTING.md and ISSUES.md.
+Written 2026-11-25 on the Windows PC, updated 2026-11-26, for the next Claude Code session (on a MacBook).
+Read this first, then README.md, RELEASING.md, TESTING.md and ISSUES.md.
+
+## Update 2026-11-26 (read this before the rest)
+- **The two "open failures" below are fixed** (flow report JSON; numbered points in designer styles). Both
+  `tests/smoke_copilot.py` runs (plants, maths) PASS on Windows.
+- **Galley is now an installable desktop app (v0.3.1, commit e311735):** `desktop/` (Electron: engine start,
+  docked always-on-top window, tray, start with the computer, appears when InDesign opens, auto-update with
+  electron-updater), `packaging/galley-engine.spec` (PyInstaller engine), `copilot/paths.py` (program files vs
+  user work in `~/Library/Application Support/Galley` on a Mac). See RELEASING.md. Tested on Windows: installer,
+  0.3.0 -> 0.3.1 auto-update, maths chapter through the installed app (QA pass).
+- **Users see model tiers only** (Galley / Galley Fast / Galley Pro in `copilot/assistant.py`); never show model
+  or provider names in the UI.
+- **Mac plan, in order:** (1) macOS branch in `copilot/bridge.py` (osascript `do script`, below), (2) run the
+  smoke tests on the Mac, (3) build the Mac app: `pip install pyinstaller anthropic pillow`, `cd desktop && npm install`,
+  `npm run engine && npm run dist` (dmg + zip; signing/notarization needs an Apple Developer ID, see RELEASING.md),
+  (4) the Mac launcher pieces in `galley.ps1` / `tools/*.ps1` are only needed for the batch builder, not the app.
+- The Electron app already handles macOS (`pgrep` for InDesign, dock icon hidden, data folder); untested there.
 
 ## Where things stand
 
@@ -9,7 +25,8 @@ then README.md, TESTING.md and ISSUES.md.
 |---|---|---|
 | v0.1 (`main`, 6e2fdcf) | ingest .docx, style specs, InDesign builder, QA, variants, web UI, pitch | done, tested on Windows |
 | v0.2 (`main`, 4873137) | copilot window beside InDesign: continue in the designer's own styles, Check, apply look to all, chat with tools, references; one-step undo | done, tested on Windows; chat untested (no API key yet) |
-| house rules (branch `house-rules-wip`) | the publisher's layout rules turned into generic behaviour (below) | **work in progress**: Galley's own builder passes; the copilot path has 2 open failures |
+| house rules (branch `house-rules-wip`) | the publisher's layout rules turned into generic behaviour (below) | done, tested on Windows (both smoke tests PASS) |
+| v0.3.1 desktop app (branch `house-rules-wip`, e311735) | installable Electron app with bundled engine and auto-update | done, tested on Windows; Mac build not done |
 
 ### House rules (branch `house-rules-wip`)
 A publisher's layout review was turned into general Galley behaviour (no client branding):
