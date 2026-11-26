@@ -1,0 +1,35 @@
+{
+  "name": "galley",
+  "productName": "Galley",
+  "version": "0.3.1",
+  "description": "Galley: a layout copilot that sits beside InDesign. Manuscript in, book out.",
+  "author": "Galley",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "engine": "cd .. && python -m PyInstaller packaging/galley-engine.spec --noconfirm --distpath dist --workpath build",
+    "dist": "electron-builder --publish never",
+    "release": "electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-log": "^5.2.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "app.galley.copilot",
+    "productName": "Galley",
+    "directories": { "output": "dist", "buildResources": "assets" },
+    "files": ["main.js", "preload.js", "splash.html", "assets/**"],
+    "extraResources": [{ "from": "../dist/galley-engine", "to": "engine" }],
+    "win": { "target": ["nsis"], "icon": "assets/icon.png" },
+    "nsis": { "oneClick": true, "perMachine": false, "artifactName": "Galley-Setup-${version}.${ext}", "shortcutName": "Galley" },
+    "mac": { "target": ["dmg", "zip"], "category": "public.app-category.graphics-design", "icon": "assets/icon.png" },
+    "publish": [{ "provider": "github", "owner": "tosin25", "repo": "galley-releases" }]
+  }
+}

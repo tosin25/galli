@@ -5,6 +5,10 @@ same chapter in several looks, checks every page automatically, and exports PDFs
 It is meant for in-house book designers, not engineers. This folder is a working prototype for Windows and
 InDesign 2022+.
 
+**v0.3 is an installable desktop app**: `Galley-Setup.exe` installs Galley for the user; it starts the engine
+itself, docks the copilot beside InDesign, lives in the tray and updates itself. No Python or Terminal on the
+designer's laptop. Build and release steps: [RELEASING.md](RELEASING.md). Development: `cd desktop && npm start`.
+
 **v0.2 adds the Galley Copilot**: a window docked beside InDesign that works on the document you have open:
 continue the book in *your* paragraph styles, check every page, change styles by asking, and collect references.
 Start it with `.\galley.ps1 copilot`. See [Copilot](#copilot) and [TESTING.md](TESTING.md).

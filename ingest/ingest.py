@@ -428,7 +428,11 @@ def main():
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(1)
-    src, out = sys.argv[1], sys.argv[2]
+    print('\n'.join(run(sys.argv[1], sys.argv[2])[:3]))
+
+
+def run(src, out):
+    """Read one .docx into out/content.json (+ media, ingest_report.txt). Returns the report lines."""
     os.makedirs(out, exist_ok=True)
     ing = Ingest(src, out)
     data = ing.build()
@@ -443,7 +447,7 @@ def main():
     lines += ['', 'please review (%d):' % len(ing.review)] + ['  ' + r for r in ing.review]
     with open(os.path.join(out, 'ingest_report.txt'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
-    print('\n'.join(lines[:3]))
+    return lines
 
 
 if __name__ == '__main__':

@@ -62,6 +62,8 @@ def main():
     # the promise to designers: after a flow (and a Check), ONE undo removes everything Galley added
     bridge.check_document()
     u = bridge.js("var d = app.activeDocument, n = d.undoName, b = d.pages.length; d.undo(); return __j({name: n, before: b, after: d.pages.length});")
+    if 'name' not in u:
+        sys.exit('undo check failed: %s' % u)
     print('undo: top step %r, pages %s -> %s' % (u['name'], u['before'], u['after']))
     if u['name'] != 'Galley: flow manuscript' or u['after'] != 1:
         fails.append('one undo should remove the whole flow (got %s)' % u)

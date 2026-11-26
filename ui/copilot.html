@@ -28,6 +28,8 @@
   .gear { background: none; color: var(--soft); font-size: 16px; padding: 2px 4px; }
   .sel { margin: 8px 0 0; padding: 7px 9px; background: var(--user); border-radius: 6px; display: flex; gap: 8px; align-items: center; font-size: 12px; }
   [hidden] { display: none !important; }
+  .upd { margin: 8px 0 0; padding: 7px 9px; border-radius: 6px; display: flex; gap: 8px; align-items: center; font-size: 12px; background: var(--chip); }
+  .upd span { flex: 1; }
   .sel span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav { display: flex; gap: 2px; margin-top: 8px; }
   nav button { background: none; color: var(--soft); border-radius: 0; padding: 7px 10px 8px; border-bottom: 2px solid transparent; }
@@ -95,6 +97,7 @@
     <select id="model" title="Model" style="max-width:150px"></select>
     <button class="gear" id="gear" title="Settings" aria-label="Settings">⚙</button>
   </div>
+  <div class="upd" id="upd" hidden><span id="updText"></span><button id="updBtn" hidden>Restart to update</button></div>
   <div class="sel" id="sel" hidden><span id="selText"></span><button id="applyAll" class="ghost" title="Make this paragraph's look the style, everywhere">Apply look to all</button></div>
   <nav>
     <button class="on" data-tab="assist">Assist</button><button data-tab="check">Check</button><button data-tab="continue">Continue</button><button data-tab="refs">References</button>
@@ -163,8 +166,9 @@
 <div class="modal" id="settings"><div class="card">
   <h3>Settings</h3>
   <p class="small muted" style="margin:0 0 8px">Your key stays on this computer (in your user profile, not in the project).</p>
-  <label class="small">Claude API key <span id="keyHint" class="muted"></span></label>
-  <input type="password" id="apiKey" placeholder="sk-ant-…" style="width:100%;margin:4px 0 10px">
+  <p class="small muted" id="appVersion" style="margin:0 0 8px"></p>
+  <label class="small">AI key <span id="keyHint" class="muted"></span></label>
+  <input type="password" id="apiKey" placeholder="Paste the Galley AI key" style="width:100%;margin:4px 0 10px">
   <div class="row"><button id="saveSettings">Save</button><button class="ghost" id="closeSettings">Close</button><button class="link" id="clearKey" style="margin-left:auto">Remove key</button></div>
 </div></div>
 
@@ -322,6 +326,19 @@ $('#saveSettings').onclick = async () => { const s = await api('settings', { api
 $('#clearKey').onclick = async () => applySettings(await api('settings', { api_key: '' }));
 $('#model').onchange = () => api('settings', { model: $('#model').value });
 function applySettings(s) { $('#keyHint').textContent = s.has_key ? `(saved ${s.key_hint})` : '(not set)'; }
+
+// ---------- desktop app: version and updates (only inside the installed Galley app)
+function showUpdate(u) {
+  if (!u) return;
+  const msg = { checking: '', current: '', downloading: `Downloading Galley ${u.version || ''} update${u.percent != null ? ' · ' + u.percent + '%' : ''}…`,
+    ready: `Galley ${u.version} is ready.`, error: '' }[u.status] || '';
+  $('#upd').hidden = !msg; $('#updText').textContent = msg; $('#updBtn').hidden = u.status !== 'ready';
+}
+if (window.galleyApp) {
+  window.galleyApp.info().then(i => { $('#appVersion').textContent = 'Galley ' + i.version; showUpdate(i.update); });
+  window.galleyApp.onUpdate(showUpdate);
+  $('#updBtn').onclick = () => { $('#updText').textContent = 'Restarting…'; window.galleyApp.installUpdate(); };
+}
 
 (async function init() {
   STATE = await api('state');

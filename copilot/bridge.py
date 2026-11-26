@@ -15,7 +15,9 @@ import threading
 import pythoncom
 import win32com.client
 
-G = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+from . import paths
+
+G = paths.RES  # program files (InDesign scripts, art); the user's work goes to paths.WORK
 JS = 1246973031            # ScriptLanguage.JAVASCRIPT
 _lock = threading.Lock()   # InDesign runs one script at a time
 
@@ -138,7 +140,7 @@ return __j({ok:true, page: pg.name});""" % (json.dumps(str(page)), json.dumps(st
 
 def check_document():
     """QA on the open document, no export. Returns the qa.json dict."""
-    out = os.path.join(G, 'work', 'copilot')
+    out = os.path.join(paths.WORK, 'copilot')
     os.makedirs(out, exist_ok=True)
     qa = os.path.join(out, 'qa.json')
     if os.path.exists(qa):
@@ -205,7 +207,7 @@ def save_mapping(mapping):
 
 def flow_manuscript(content_path, mapping):
     """Mode A: flow content.json into the OPEN document after its last page, using the designer's own styles."""
-    out = os.path.join(G, 'work', 'copilot')
+    out = os.path.join(paths.WORK, 'copilot')
     os.makedirs(out, exist_ok=True)
     rep = os.path.join(out, 'flow_report.json')
     if os.path.exists(rep):

@@ -17,12 +17,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from copilot import copilot_api  # noqa: E402  (copilot routes: /copilot, /api/c/...)
+from copilot import copilot_api, paths  # noqa: E402  (copilot routes: /copilot, /api/c/...)
 
-G = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-WORK, OUT, STYLE = os.path.join(G, 'work'), os.path.join(G, 'out'), os.path.join(G, 'style')
+G = paths.RES                       # program files: ui, style, samples (read-only when installed)
+WORK, OUT, STYLE = paths.WORK, paths.OUT, os.path.join(paths.RES, 'style')
 PROJECT = os.path.join(WORK, 'project.json')
-PORT = 8765
+PORT = paths.PORT
 
 # the reference checklist for "Style from references"; required items gate the variants step
 CHECKLIST = [
@@ -62,10 +62,15 @@ def save_project(p):
 
 
 def styles():
-    out = []
-    for fn in sorted(os.listdir(STYLE)):
-        if fn.endswith('.json'):
-            with open(os.path.join(STYLE, fn), encoding='utf-8') as f:
+    out, seen = [], set()
+    # built-in styles (program files) plus the user's own (their profile)
+    files = [(STYLE, fn) for fn in sorted(os.listdir(STYLE))]
+    if os.path.isdir(paths.USER_STYLES) and os.path.abspath(paths.USER_STYLES) != os.path.abspath(STYLE):
+        files += [(paths.USER_STYLES, fn) for fn in sorted(os.listdir(paths.USER_STYLES))]
+    for d, fn in files:
+        if fn.endswith('.json') and fn not in seen:
+            seen.add(fn)
+            with open(os.path.join(d, fn), encoding='utf-8') as f:
                 s = json.load(f)
             out.append({'id': s['id'], 'name': s['name'], 'description': s.get('description', ''), 'trim': s['trim'],
                         'fonts': s['fonts'], 'palette': s['palette'], 'type': s['type']})
@@ -138,7 +143,8 @@ def write_custom_style(p):
         for k, v in pr['palette'].items():
             if re.match(r'^#[0-9a-fA-F]{6}$', v or ''):
                 s['palette'][k] = v
-    with open(os.path.join(STYLE, 'custom.json'), 'w', encoding='utf-8') as f:
+    os.makedirs(paths.USER_STYLES, exist_ok=True)
+    with open(os.path.join(paths.USER_STYLES, 'custom.json'), 'w', encoding='utf-8') as f:
         json.dump(s, f, indent=2)
 
 
@@ -256,6 +262,10 @@ class Server(ThreadingHTTPServer):
 
 
 if __name__ == '__main__':
+    # inside the desktop app there is no console: send output to a log file in the user's Galley folder
+    if sys.stdout is None or sys.stderr is None or paths.FROZEN:
+        _log = open(os.path.join(paths.DATA, 'galley-engine.log'), 'a', encoding='utf-8', buffering=1)
+        sys.stdout = sys.stderr = _log
     try:
         srv = Server(('127.0.0.1', PORT), H)
     except OSError:

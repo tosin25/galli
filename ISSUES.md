@@ -2,6 +2,25 @@
 
 Log findings here using the template in TESTING.md. Newest first.
 
+### (note) Apps started from inside the Claude desktop app's terminal see a private AppData
+- Who / when: desktop app test, 2026-11-26
+- Got: the installed Galley, started from Claude's PowerShell, saved its work into
+  `%LOCALAPPDATA%\Packages\Claude_...\LocalCache\Roaming\Galley` (Windows app virtualization), which InDesign
+  cannot see, so flows failed with ") does not have a value".
+- Not a Galley bug: started from the Start menu / Explorer it uses the real `%APPDATA%\Galley` (verified).
+  When testing from a Claude session, start Galley with `explorer.exe "%LOCALAPPDATA%\Programs\galley\Galley.exe"`.
+- Hardening idea: the engine could check InDesign can read the content file and say so plainly.
+
+### (seen once) Installer crashed in NSIS System.dll
+- Who / when: desktop app test, 2026-11-26
+- Got: `Galley-Setup-0.3.0.exe /S` crashed (0xc0000005 in System.dll) right after the development copy of Galley
+  was force-closed. Re-running the same installer from the same folder worked, three times. Probably the
+  installer's "is Galley running?" check meeting a process that was still shutting down. Watch for it.
+
+### (fixed) Copilot flow report JSON and numbered points in designer styles
+- Fixed 2026-11-26: control characters escaped in flow_into.jsx's report; Galley switches off the designer
+  style's own automatic bullet/number on paragraphs it numbers itself. Both smoke tests PASS.
+
 ### (open) Galley's InDesign connection is Windows-only
 - Who / when: moving development to a Mac, 2026-11-25
 - Got: `copilot/bridge.py` (COM), `galley.ps1`, the copilot launcher and `tools/*.ps1` need Windows.

@@ -9,17 +9,21 @@ import json
 import mimetypes
 import os
 
-from . import bridge, mapping, settings
+from . import bridge, mapping, paths, settings
 
+# What designers see is Galley's own tiers; which model runs behind each tier is an internal detail
+# (change it here without touching the app). 'model' is never sent to the UI.
 MODELS = [
-    {'id': 'claude-opus-5-5', 'label': 'Claude Opus 5.5', 'provider': 'anthropic', 'available': True, 'default': True},
-    {'id': 'claude-sonnet-5-5', 'label': 'Claude Sonnet 5.5 (faster)', 'provider': 'anthropic', 'available': True},
-    {'id': 'claude-haiku-5-5', 'label': 'Claude Haiku 5.5 (fastest)', 'provider': 'anthropic', 'available': True},
-    {'id': 'claude-fable-5-2', 'label': 'Claude Fable 5.2 (most capable)', 'provider': 'anthropic', 'available': True},
-    {'id': 'openai', 'label': 'OpenAI GPT (coming)', 'provider': 'openai', 'available': False},
-    {'id': 'deepseek', 'label': 'DeepSeek (coming)', 'provider': 'deepseek', 'available': False},
-    {'id': 'galley', 'label': 'Galley model (future)', 'provider': 'galley', 'available': False},
+    {'id': 'galley', 'label': 'Galley', 'model': 'claude-opus-5-5', 'available': True, 'default': True},
+    {'id': 'galley-fast', 'label': 'Galley Fast', 'model': 'claude-sonnet-5-5', 'available': True},
+    {'id': 'galley-pro', 'label': 'Galley Pro', 'model': 'claude-fable-5-2', 'available': True},
 ]
+LEGACY = {'claude-opus-5-5': 'galley', 'claude-sonnet-5-5': 'galley-fast', 'claude-haiku-5-5': 'galley-fast', 'claude-fable-5-2': 'galley-pro'}
+
+
+def public_models():
+    """the tier list for the UI, without the underlying model names"""
+    return [{k: v for k, v in m.items() if k != 'model'} for m in MODELS]
 
 FALLBACK_MODELS = {'claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-2'}  # models with server-side refusal fallback
 
@@ -34,7 +38,9 @@ How to work:
 - Colours are given as #RRGGBB or an existing swatch name; sizes in points; spacing and indents in millimetres.
 - When the designer shares reference images, describe the style they show (type, palette, box treatments, density) \
 and suggest concrete style values. References inform the style; never copy artwork or a page layout from them.
-- If a tool returns an error, explain it in plain words and suggest the fix."""
+- If a tool returns an error, explain it in plain words and suggest the fix.
+- You are Galley's assistant. If asked which AI model or company is behind you, say that you are Galley's
+  assistant and that details of the underlying model aren't shared; do not name or deny a provider."""
 
 TOOLS = [
     {'name': 'get_document_info', 'description': 'Name, page count, trim, paragraph and character styles, masters, the saved style mapping and the current selection of the open InDesign document.',
@@ -89,7 +95,7 @@ def run_tool(name, inp):
         st = bridge.status()
         return _map_for_doc(st)[1]
     if name == 'flow_manuscript':
-        content = os.path.join(bridge.G, 'work', 'content.json')
+        content = os.path.join(paths.WORK, 'content.json')
         if not os.path.exists(content):
             return {'ok': False, 'error': 'No manuscript yet. Open the Continue tab and choose a .docx first.'}
         st = bridge.status()
@@ -154,9 +160,10 @@ class AnthropicProvider:
 
 def chat(model_id, history, text, ref_paths, on_tool=lambda n, i: None):
     """history: [{'role','content'(text)}]; returns {'text','steps'} or {'error'}."""
+    model_id = LEGACY.get(model_id, model_id)
     model = next((m for m in MODELS if m['id'] == model_id), MODELS[0])
     if not model['available']:
-        return {'error': '%s is not connected yet. Pick a Claude model for now.' % model['label']}
+        return {'error': '%s is not available yet.' % model['label']}
     content = []
     for p in ref_paths[:8]:
         blk = _image_block(p)
@@ -166,15 +173,15 @@ def chat(model_id, history, text, ref_paths, on_tool=lambda n, i: None):
     key = settings.get('anthropic_api_key') or os.environ.get('ANTHROPIC_API_KEY', '')
     try:
         provider = AnthropicProvider(key)
-        return provider.chat(model['id'], history, content, on_tool)
+        return provider.chat(model['model'], history, content, on_tool)
     except Exception as e:  # noqa: BLE001 - map SDK errors to plain advice below
         a = __import__('anthropic')
         if isinstance(e, a.AuthenticationError) or 'api_key' in str(e).lower() or 'authentication' in str(e).lower():
-            return {'error': 'No working Claude API key. Add one in Settings (gear icon).'}
+            return {'error': 'Galley needs its AI key to chat. Add it in Settings (gear icon).'}
         if isinstance(e, a.RateLimitError):
             return {'error': 'Rate limited by the API. Wait a moment and try again.'}
         if isinstance(e, a.APIConnectionError):
-            return {'error': 'Cannot reach the Claude API. Check the internet connection.'}
+            return {'error': 'Cannot reach the AI service. Check the internet connection.'}
         if isinstance(e, a.APIStatusError):
-            return {'error': 'Claude API error %s: %s' % (e.status_code, getattr(e, 'message', e))}
+            return {'error': 'The AI service returned an error (%s). Try again in a moment.' % e.status_code}
         return {'error': '%s: %s' % (type(e).__name__, e)}

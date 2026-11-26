@@ -152,6 +152,8 @@
   // a number column wide enough for the widest number, but never narrower than the designer's own hanging indent
   function numbered(label, text, role, extraIndent, hangW) {
     var s1 = add(label + '\t' + text, role), p = para(s1);
+    // the number is the manuscript's own: switch off any automatic bullet/number the designer's style would add
+    try { p.bulletsAndNumberingListType = ListType.NO_LIST; } catch (e) {}
     try { var base = p.leftIndent + p.firstLineIndent, own = -p.firstLineIndent, w = Math.max(own, hangW || 0);
       p.leftIndent = base + (extraIndent || 0) + w; p.firstLineIndent = -w; p.tabList = [{ alignment: TabStopAlignment.LEFT_ALIGN, position: p.leftIndent }]; } catch (e) {}
     var cs = cstyle('question_number'); if (cs) try { story.characters.itemByRange(s1, s1 + label.length - 1).appliedCharacterStyle = cs; } catch (e) {}
@@ -286,10 +288,12 @@
   doc.recompose();
   for (k = 0; k < PENDING.length; k++) if (!placeImage(PENDING[k][0], PENDING[k][1])) LOG.push('image ' + PENDING[k][1].name + ': could not be placed, frame left empty');
   try { app.activeWindow.activePage = doc.pages[firstPageIndex]; } catch (e) {}
+  // hand-built JSON: escape backslashes, quotes and every control character (style names and log lines can hold tabs etc.)
+  function jstr(v) { return '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\x00-\x1f\ufeff]/g, ' ') + '"'; }
   var usedArr = [], fbArr = [];
-  for (k in USED) usedArr.push('"' + k + '":"' + String(USED[k]).replace(/"/g, '\\"') + '"');
-  for (k in FALLBACK) fbArr.push('"' + k + '":"' + String(FALLBACK[k]).replace(/"/g, '\\"') + '"');
-  var lg = []; for (k = 0; k < LOG.length; k++) lg.push('"' + LOG[k].replace(/\\/g, '/').replace(/"/g, "'") + '"');
+  for (k in USED) usedArr.push(jstr(k) + ':' + jstr(USED[k]));
+  for (k in FALLBACK) fbArr.push(jstr(k) + ':' + jstr(FALLBACK[k]));
+  var lg = []; for (k = 0; k < LOG.length; k++) lg.push(jstr(LOG[k]));
   var rep = '{"ok":true,"firstPage":"' + doc.pages[firstPageIndex].name + '","lastPage":"' + doc.pages[-1].name + '","pagesAdded":' + (doc.pages.length - firstPageIndex) +
     ',"overset":' + story.overflows + ',"used":{' + usedArr.join(',') + '},"fallbacks":{' + fbArr.join(',') + '},"log":[' + lg.join(',') + ']}';
   var rf = File(arg('galley_report', Folder.temp + '/galley_flow_report.json')); rf.encoding = 'UTF-8'; rf.open('w'); rf.write(rep); rf.close();

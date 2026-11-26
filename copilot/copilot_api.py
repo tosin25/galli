@@ -5,14 +5,16 @@ Each handler returns (status_code, json_body). InDesign work goes through bridge
 import json
 import os
 import re
-import subprocess
 import sys
 import time
 
-from . import assistant, bridge, mapping, settings
+from . import assistant, bridge, mapping, paths, settings
 
-G = bridge.G
-WORK = os.path.join(G, 'work')
+sys.path.insert(0, os.path.join(paths.RES, 'ingest'))
+import ingest  # noqa: E402
+
+G = paths.RES
+WORK = paths.WORK
 BOARD = os.path.join(WORK, 'refs', 'board')
 LINKS = os.path.join(BOARD, 'links.json')
 IMG_EXT = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
@@ -58,7 +60,8 @@ def get(path, q):
             st['savedMapping'] = saved
         return 200, st
     if path == 'state':
-        return 200, {'content': _content_summary(), 'board': _board(), 'settings': settings.public(), 'models': assistant.MODELS}
+        return 200, {'content': _content_summary(), 'board': _board(), 'settings': settings.public(), 'models': assistant.public_models(),
+                     'version': paths.version(), 'frozen': paths.FROZEN}
     return 404, {'error': 'not found'}
 
 
@@ -102,9 +105,11 @@ def post(path, q, body, filename):
                 src = os.path.join(d, os.path.basename(filename))
                 with open(src, 'wb') as f:
                     f.write(body)
-            r = subprocess.run([sys.executable, os.path.join(G, 'ingest', 'ingest.py'), src, WORK], capture_output=True, text=True, timeout=120)
-            if r.returncode:
-                return 500, {'error': 'Could not read the manuscript: ' + (r.stderr or r.stdout)[-400:]}
+            # read it in-process (the installed app has no separate Python to run ingest.py with)
+            try:
+                ingest.run(src, WORK)
+            except Exception as e:  # noqa: BLE001 - a broken .docx should come back as a readable message
+                return 500, {'error': 'Could not read the manuscript: %s' % e}
             return 200, {'content': _content_summary()}
         if path == 'refs':
             if filename:
@@ -143,7 +148,7 @@ def post(path, q, body, filename):
         if path == 'chat':
             refs = [os.path.join(BOARD, os.path.basename(n)) for n in data.get('refs', []) if os.path.isfile(os.path.join(BOARD, os.path.basename(n)))]
             hist = [{'role': h['role'], 'content': h['content']} for h in data.get('history', [])[-16:] if h.get('role') in ('user', 'assistant') and h.get('content')]
-            model = data.get('model') or settings.get('model', 'claude-opus-5-5')
+            model = data.get('model') or settings.get('model', 'galley')
             return 200, assistant.chat(model, hist, data.get('text', ''), refs)
     except bridge.InDesignNotRunning as e:
         return 409, {'error': str(e)}

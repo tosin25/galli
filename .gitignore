@@ -4,3 +4,7 @@ __pycache__/
 *.pyc
 *.idlk
 style/custom.json
+build/
+dist/
+desktop/node_modules/
+desktop/dist/

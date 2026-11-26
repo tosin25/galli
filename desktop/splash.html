@@ -1,0 +1,13 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Galley Copilot</title>
+<style>
+  :root { --bg:#F4F4F2; --ink:#1D2026; --soft:#646973; --accent:#0E7C86; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1E1F22; --ink:#E7E8EA; --soft:#9BA0A8; --accent:#3FB6BF; } }
+  html, body { height: 100%; margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 13px "Segoe UI", system-ui, sans-serif; display: grid; place-items: center; text-align: center; }
+  .logo { font: 800 30px Georgia, serif; } .logo span { color: var(--accent); }
+  p { color: var(--soft); max-width: 300px; }
+  .spin { width: 18px; height: 18px; margin: 14px auto 0; border: 2px solid #ccc; border-top-color: var(--accent); border-radius: 50%; animation: s .8s linear infinite; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style></head>
+<body><div><div class="logo">Gall<span>e</span>y</div><div class="spin"></div><p id="msg">Starting Galley…</p></div></body></html>

@@ -35,6 +35,6 @@ def public():
     """Settings safe to send to the UI: the key is masked."""
     s = load()
     k = s.get('anthropic_api_key') or ''
-    return {'model': s.get('model', 'claude-opus-5-5'), 'has_key': bool(k or os.environ.get('ANTHROPIC_API_KEY')),
+    return {'model': {'claude-opus-5-5': 'galley', 'claude-sonnet-5-5': 'galley-fast', 'claude-haiku-5-5': 'galley-fast', 'claude-fable-5-2': 'galley-pro'}.get(s.get('model', 'galley'), s.get('model', 'galley')), 'has_key': bool(k or os.environ.get('ANTHROPIC_API_KEY')),
             'key_hint': ('…' + k[-4:]) if k else ('from environment' if os.environ.get('ANTHROPIC_API_KEY') else ''),
             'pin_on_top': s.get('pin_on_top', True)}
