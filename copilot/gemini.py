@@ -7,6 +7,7 @@ what is sent to improve its products, so test with your own pins and samples, no
 import base64
 import json
 import mimetypes
+import os
 import urllib.error
 import urllib.request
 
@@ -18,21 +19,36 @@ class GeminiError(Exception):
     pass
 
 
+def server_url():
+    """the Galley server, for account keys (gly_...): Settings, then GALLEY_SERVER, then a server on this machine"""
+    from . import settings
+    return (settings.get('server_url') or os.environ.get('GALLEY_SERVER') or 'http://127.0.0.1:8790').rstrip('/')
+
+
 def _call(method, path, key, body=None, timeout=180):
-    req = urllib.request.Request(API + path, method=method, headers={'x-goog-api-key': key, 'Content-Type': 'application/json'},
-                                 data=json.dumps(body).encode() if body is not None else None)
+    account = key.startswith('gly_')  # a Galley account: the server holds the AI key and the limits
+    url, headers = (server_url() + '/v1/google' + path, {'Authorization': 'Bearer ' + key}) if account else (API + path, {'x-goog-api-key': key})
+    headers['Content-Type'] = 'application/json'
+    req = urllib.request.Request(url, method=method, headers=headers, data=json.dumps(body).encode() if body is not None else None)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
-        detail = e.read().decode('utf-8', 'replace')[:400]
+        raw = e.read().decode('utf-8', 'replace')
+        detail = raw[:400]
+        if account:
+            try:
+                msg = json.loads(raw)['error']['message']
+            except (ValueError, KeyError, TypeError):
+                msg = 'Galley server error %s.' % e.code
+            raise GeminiError(msg) from e
         if e.code in (401, 403):
             raise GeminiError('The Google AI key was refused. Check it in Settings.') from e
         if e.code == 429:
             raise GeminiError('The free Google AI limit was reached. Wait a minute and try again.') from e
         raise GeminiError('Google AI error %s: %s' % (e.code, detail)) from e
     except urllib.error.URLError as e:
-        raise GeminiError('Cannot reach Google AI. Check the internet connection.') from e
+        raise GeminiError('Cannot reach the Galley server.' if account else 'Cannot reach Google AI. Check the internet connection.') from e
 
 
 def pick_model(key):
