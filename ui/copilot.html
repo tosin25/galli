@@ -158,7 +158,8 @@
       <p class="muted small" style="margin:0 0 8px">Galley lays out the first pages of your manuscript in 3 different designs. Pick the one you like and it opens in InDesign as a full chapter.</p>
       <div class="small" id="dsMs"></div>
       <div class="small" id="dsPins" style="margin:4px 0 10px"></div>
-      <button id="makeDrafts">Make 3 drafts</button>
+      <div class="row"><button id="brainstorm">Brainstorm 3 ideas from my pins</button><button class="ghost" id="makeDrafts">Use built-in looks</button></div>
+      <div id="ideas" class="small" style="margin-top:8px"></div>
       <div id="dsJob" class="small" style="margin-top:8px"></div>
     </div>
     <div id="drafts"></div>
@@ -185,6 +186,8 @@
   <h3>Settings</h3>
   <p class="small muted" style="margin:0 0 8px">Your key stays on this computer (in your user profile, not in the project).</p>
   <p class="small muted" id="appVersion" style="margin:0 0 8px"></p>
+  <label class="small">Google AI key, free, for design ideas <span id="gemHint" class="muted"></span></label>
+  <input type="password" id="gemKey" placeholder="Paste the key from aistudio.google.com" style="width:100%;margin:4px 0 10px">
   <label class="small">AI key <span id="keyHint" class="muted"></span></label>
   <input type="password" id="apiKey" placeholder="Paste the Galley AI key" style="width:100%;margin:4px 0 10px">
   <div class="row"><button id="saveSettings">Save</button><button class="ghost" id="closeSettings">Close</button><button class="link" id="clearKey" style="margin-left:auto">Remove key</button></div>
@@ -342,6 +345,17 @@ function renderDrafts(d) {
   if (j.running && !draftPoll) draftPoll = setInterval(async () => { const r = await api('drafts'); renderDrafts(r); if (!r.job.running) { clearInterval(draftPoll); draftPoll = null; } }, 2000);
 }
 $('#lb').onclick = () => $('#lb').classList.remove('on');
+$('#brainstorm').onclick = async () => {
+  if (!picked.size) { $('#ideas').innerHTML = '<span class="fail">Select a few pins in the References tab first.</span>'; return; }
+  $('#brainstorm').disabled = true; $('#ideas').innerHTML = '<span class="spin"></span> Looking at your pins and the manuscript…';
+  const r = await api('brainstorm', { refs: [...picked] }).catch(e => ({ error: String(e) }));
+  $('#brainstorm').disabled = false;
+  if (r.error && !r.designs) { $('#ideas').innerHTML = `<span class="fail">${esc(r.error)}</span>`; if (/key/i.test(r.error)) $('#settings').classList.add('on'); return; }
+  $('#ideas').innerHTML = (r.questions && r.questions.length ? `<div class="muted" style="margin-bottom:6px">Galley asks: ${r.questions.map(esc).join(' ')}</div>` : '') +
+    r.designs.map((d, i) => `<div><b>${i + 1}. ${esc(d.name)}</b>: ${esc(d.why)}</div>`).join('') +
+    '<div class="muted" style="margin-top:6px">Making the 3 drafts in InDesign…</div>';
+  renderDrafts(await api('drafts'));
+};
 $('#makeDrafts').onclick = async () => {
   const r = await api('drafts', { styles: ['bright', 'classic', 'modern'] });
   if (r.error) { $('#dsJob').innerHTML = `<span class="fail">${esc(r.error)}</span>`; return; }
@@ -375,10 +389,13 @@ $('#askRefs').onclick = () => { goTab('assist'); send('Look at these references.
 // ---------- settings + models
 $('#gear').onclick = () => $('#settings').classList.add('on');
 $('#closeSettings').onclick = () => $('#settings').classList.remove('on');
-$('#saveSettings').onclick = async () => { const s = await api('settings', { api_key: $('#apiKey').value }); $('#apiKey').value = ''; applySettings(s); $('#settings').classList.remove('on'); };
+$('#saveSettings').onclick = async () => {
+  const body = {}; if ($('#apiKey').value) body.api_key = $('#apiKey').value; if ($('#gemKey').value) body.gemini_key = $('#gemKey').value;
+  const s = await api('settings', body); $('#apiKey').value = ''; $('#gemKey').value = ''; applySettings(s); $('#settings').classList.remove('on'); };
 $('#clearKey').onclick = async () => applySettings(await api('settings', { api_key: '' }));
 $('#model').onchange = () => api('settings', { model: $('#model').value });
-function applySettings(s) { $('#keyHint').textContent = s.has_key ? `(saved ${s.key_hint})` : '(not set)'; }
+function applySettings(s) { $('#keyHint').textContent = s.has_key ? `(saved ${s.key_hint})` : '(not set)';
+  $('#gemHint').textContent = s.has_gemini ? `(saved ${s.gemini_hint})` : '(not set)'; }
 
 // ---------- desktop app: version and updates (only inside the installed Galley app)
 function showUpdate(u) {

@@ -81,11 +81,32 @@ def _build_one(style_id, order, content):
         json.dump(meta, f, indent=1)
 
 
-def start(style_ids):
+def sample_content(src, dest, max_blocks=14):
+    """A short sample of the manuscript for quick drafts: the opening, up to the first example and exercise.
+    Drafts show 2-3 pages; the full chapter is built only for the design the designer picks."""
+    with open(src, encoding='utf-8') as f:
+        c = json.load(f)
+    out, seen_ex, seen_exr = [], False, False
+    for b in c['blocks']:
+        out.append(b)
+        seen_ex = seen_ex or b['type'] == 'example'
+        seen_exr = seen_exr or b['type'] == 'exercise'
+        if len(out) >= max_blocks or (seen_ex and seen_exr and len(out) >= 6):
+            break
+    c['blocks'] = out
+    c['meta']['labels'] = []
+    with open(dest, 'w', encoding='utf-8') as f:
+        json.dump(c, f, ensure_ascii=False)
+    return dest
+
+
+def start(style_ids, full=False):
     """build the drafts in the background; the copilot polls state()"""
     content = os.path.join(paths.WORK, 'content.json')
     if not os.path.exists(content):
         return {'error': 'Choose a manuscript first (Continue tab).'}
+    if not full:  # quick drafts: only the opening pages (same folder, so pictures still resolve)
+        content = sample_content(content, os.path.join(paths.WORK, 'content_sample.json'))
     style_ids = [s for s in style_ids if spec_path(s)][:4]
     if not style_ids:
         return {'error': 'No looks to draft.'}

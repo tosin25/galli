@@ -8,12 +8,15 @@
   var target = File(SA.getValue('galley_target'));
   var undo = SA.isDefined('galley_undo') ? SA.getValue('galley_undo') : '';
   var msg = 'OK';
+  // no dialogs while Galley works (missing fonts, missing links, alerts): a dialog would freeze InDesign
+  // until someone clicks it, with Galley waiting behind it
+  app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
   try {
     if (undo) app.doScript(function () { $.evalFile(target); }, ScriptLanguage.JAVASCRIPT, undefined, UndoModes.ENTIRE_SCRIPT, undo);
     else $.evalFile(target);
   } catch (e) {
     msg = 'ERROR: ' + e.message + ' | line ' + e.line + ' | ' + (e.source ? String(e.source).split('\n')[e.line - 1] : '');
-    app.scriptPreferences.userInteractionLevel = UserInteractionLevels.INTERACT_WITH_ALL;
   }
+  app.scriptPreferences.userInteractionLevel = UserInteractionLevels.INTERACT_WITH_ALL;
   out.open('w'); out.write(msg); out.close();
 })();

@@ -24,7 +24,7 @@ _lock = threading.Lock()   # InDesign runs one script at a time
 # tiny JSON writer for ExtendScript (which has no JSON object)
 PRELUDE = r"""
 function __j(v){var t=typeof v;if(v===null||v===undefined)return 'null';if(t=='number')return isFinite(v)?String(v):'null';
-if(t=='boolean')return v?'true':'false';if(t=='string')return '"'+v.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\r|\n/g,'\\n').replace(/\t/g,'\\t')+'"';
+if(t=='boolean')return v?'true':'false';if(t=='string')return '"'+v.replace(/\\/g,'\\\\').replace(/"/g,'\\"').replace(/\r|\n/g,'\\n').replace(/\t/g,'\\t').replace(/[\x00-\x1f\u2028\u2029]/g,function(c){return '\\u'+('0000'+c.charCodeAt(0).toString(16)).slice(-4);})+'"';
 if(v instanceof Array){var a=[];for(var i=0;i<v.length;i++)a.push(__j(v[i]));return '['+a.join(',')+']';}
 var o=[];for(var k in v){if(v.hasOwnProperty(k))o.push(__j(String(k))+':'+__j(v[k]));}return '{'+o.join(',')+'}';}
 """
@@ -59,7 +59,10 @@ def js(code, undo_name=None, args=None):
         if args:
             for k, v in args.items():
                 app.ScriptArgs.SetValue(k, v if isinstance(v, str) else json.dumps(v))
-        body = '(function(){try{' + code + '}catch(e){return __j({error:e.message,line:e.line});}})()'
+        # no dialogs while Galley works (a dialog freezes InDesign until clicked); restored right after
+        body = ('(function(){app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;'
+                'try{return (function(){' + code + '})();}catch(e){return __j({error:e.message,line:e.line});}'
+                'finally{app.scriptPreferences.userInteractionLevel = UserInteractionLevels.INTERACT_WITH_ALL;}})()')
         if undo_name:  # one undo step, opened from inside InDesign (the COM undo arguments are not applied reliably)
             src = (PRELUDE + '\nvar __r; app.doScript(function(){ __r = ' + body + '; }, ScriptLanguage.JAVASCRIPT, undefined, '
                    'UndoModes.ENTIRE_SCRIPT, ' + json.dumps('Galley: ' + undo_name) + '); __r;')
@@ -200,6 +203,49 @@ for (var j = 0; j < st.length; j++) { var ps = st[j].paragraphs.everyItem().getE
   for (var q = 0; q < ps.length; q++) if (ps[q].appliedParagraphStyle.id == s.id) n++; }
 p.clearOverrides(OverrideType.PARAGRAPH_ONLY);
 return __j({ok:true, style: s.name, changed: changed, paragraphs: n});""", undo_name='apply look to all')
+
+
+def describe_page(page):
+    """what is on one page: its paragraphs (style, size, start of text), pictures and how full it is"""
+    return js(r"""
+var d = app.activeDocument, pg = d.pages.itemByName(app.scriptArgs.getValue('g_page'));
+if (!pg.isValid) return __j({ok:false, error:'There is no page ' + app.scriptArgs.getValue('g_page') + ' in ' + d.name});
+var out = [], tfs = pg.textFrames.everyItem().getElements(), pics = pg.allGraphics.length, used = 0, H = 0;
+for (var i = 0; i < tfs.length; i++) {
+  var ps = tfs[i].paragraphs.everyItem().getElements();
+  for (var j = 0; j < ps.length && out.length < 40; j++) { var p = ps[j]; var t = p.contents.replace(/[\r\n￼]+/g, ' ');
+    if (!t.replace(/\s/g, '')) continue;
+    out.push({n: out.length + 1, style: p.appliedParagraphStyle.name, size: p.pointSize, text: t.substr(0, 90), local_changes: p.styleOverridden}); }
+  try { var g = tfs[i].geometricBounds; if (tfs[i].lines.length) { H = g[2] - g[0]; used = Math.max(used, (tfs[i].lines[-1].baseline - g[0]) / H); } } catch (e) {}
+}
+return __j({ok:true, page: pg.name, paragraphs: out, pictures: pics, filled_percent: Math.round(used * 100)});""",
+              args={'g_page': str(page)})
+
+
+def change_paragraph(page, contains, changes):
+    """local change to the paragraph(s) on a page whose text contains `contains` (one undo step).
+    Besides the style properties in ALLOWED, 'start_on_next_page': true moves that paragraph to the next page."""
+    allowed = set(ALLOWED) | {'start_on_next_page'}
+    bad = [k for k in changes if k not in allowed]
+    if bad:
+        return {'ok': False, 'error': 'not allowed: ' + ', '.join(bad)}
+    return js(r"""
+var d = app.activeDocument, pg = d.pages.itemByName(app.scriptArgs.getValue('g_page')), want = app.scriptArgs.getValue('g_text');
+var P = eval('(' + app.scriptArgs.getValue('g_props') + ')');
+if (!pg.isValid) return __j({ok:false, error:'no page ' + app.scriptArgs.getValue('g_page')});
+function sw(v) { if (!/^#[0-9a-fA-F]{6}$/.test(v)) { var x = d.swatches.itemByName(v); if (!x.isValid) throw Error('no swatch ' + v); return x; }
+  var nm = 'Galley ' + v.toUpperCase(), c = d.colors.itemByName(nm); if (c.isValid) return c;
+  return d.colors.add({name:nm, model:ColorModel.PROCESS, space:ColorSpace.RGB, colorValue:[parseInt(v.substr(1,2),16),parseInt(v.substr(3,2),16),parseInt(v.substr(5,2),16)]}); }
+var tfs = pg.textFrames.everyItem().getElements(), hit = 0, errs = [];
+for (var i = 0; i < tfs.length; i++) { var ps = tfs[i].paragraphs.everyItem().getElements();
+  for (var j = 0; j < ps.length; j++) { if (ps[j].contents.toLowerCase().indexOf(want.toLowerCase()) < 0) continue; hit++;
+    for (var k in P) { try { var v = P[k];
+      if (k == 'start_on_next_page') { if (v) ps[j].startParagraph = StartParagraph.NEXT_FRAME; continue; }
+      if (/Color$/.test(k)) v = sw(v); if (k == 'justification') v = Justification[String(v).toUpperCase() + '_ALIGN'] || v;
+      ps[j][k] = v; } catch (e) { errs.push(k + ': ' + e.message); } } } }
+if (!hit) return __j({ok:false, error:'No paragraph on page ' + pg.name + ' contains "' + want + '".'});
+return __j({ok: errs.length == 0, page: pg.name, paragraphs_changed: hit, errors: errs});""",
+              undo_name='change page %s' % page, args={'g_page': str(page), 'g_text': contains, 'g_props': json.dumps(changes)})
 
 
 def save_mapping(mapping):

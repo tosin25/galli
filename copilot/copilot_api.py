@@ -8,7 +8,7 @@ import re
 import sys
 import time
 
-from . import assistant, bridge, drafts, mapping, paths, settings
+from . import assistant, brainstorm, bridge, drafts, mapping, paths, settings
 
 sys.path.insert(0, os.path.join(paths.RES, 'ingest'))
 import ingest  # noqa: E402
@@ -94,6 +94,10 @@ def post(path, q, body, filename):
         if path == 'drafts':
             r = drafts.start(data.get('styles') or ['bright', 'classic', 'modern'])
             return (400 if r.get('error') else 200), r
+        if path == 'brainstorm':
+            refs = [os.path.join(BOARD, os.path.basename(n)) for n in data.get('refs', []) if os.path.isfile(os.path.join(BOARD, os.path.basename(n)))]
+            r = brainstorm.run(refs)
+            return (400 if r.get('error') and not r.get('designs') else 200), r
         if path == 'drafts/open':
             return 200, drafts.open_draft(data.get('id', ''))
         if path == 'apply_all':
@@ -148,6 +152,8 @@ def post(path, q, body, filename):
             vals = {}
             if 'api_key' in data:
                 vals['anthropic_api_key'] = data['api_key'].strip() or None
+            if 'gemini_key' in data:
+                vals['gemini_api_key'] = data['gemini_key'].strip() or None
             for k in ('model', 'pin_on_top'):
                 if k in data:
                     vals[k] = data[k]

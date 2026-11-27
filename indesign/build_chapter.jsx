@@ -242,7 +242,13 @@
   }
   function anchorImage(s0, file, w, h) {
     flow();
-    var r = story.insertionPoints[s0].rectangles.add({ geometricBounds: [0, 0, h, w], strokeWeight: 0 });
+    // the insertion point can still be in overset text while the layout settles: re-flow and try once more
+    var r = null;
+    for (var at = 0; at < 2 && !r; at++) {
+      try { r = story.insertionPoints[s0].rectangles.add({ geometricBounds: [0, 0, h, w], strokeWeight: 0 }); }
+      catch (e) { if (at) { LOG.push('picture ' + file.name + ' skipped: ' + e.message + ' (at ' + s0 + ' of ' + story.characters.length + ', overset=' + story.overflows + ')'); return null; }
+        doc.recompose(); last.textFramePreferences.autoSizingType = AutoSizingTypeEnum.OFF; flow(); }
+    }
     flow();
     try { try { r.frameFittingOptions.fittingOnEmptyFrame = EmptyFrameFittingOptions.PROPORTIONALLY; r.frameFittingOptions.fittingAlignment = AnchorPoint.CENTER_ANCHOR; } catch (fe) {} r.place(file); r.fit(FitOptions.PROPORTIONALLY); r.fit(FitOptions.CENTER_CONTENT); } catch (e) { LOG.push('place ' + file.name + ': ' + e.message); }
     return r;
