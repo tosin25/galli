@@ -37,7 +37,9 @@ class InDesignNotRunning(Exception):
 def running():
     """True when an InDesign process exists (checked without starting InDesign)."""
     try:
-        out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq InDesign.exe', '/NH'], capture_output=True, text=True, timeout=5).stdout
+        # CREATE_NO_WINDOW: the installed engine has no console, so without it every check flashes a window
+        out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq InDesign.exe', '/NH'], capture_output=True, text=True, timeout=5,
+                             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
         return 'InDesign.exe' in out
     except Exception:  # noqa: BLE001 - treat any failure as "not known to be running"
         return False
