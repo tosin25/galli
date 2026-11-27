@@ -47,8 +47,9 @@ arrive by themselves.
 - **Windows warning on first install.** The installer is not code-signed yet, so Windows SmartScreen says
   "Windows protected your PC": click *More info* > *Run anyway*. A code-signing certificate (about
   USD 200-400 a year) removes this; add it to `build.win` when you have one.
-- **Mac.** The same app builds on a Mac (`npm run engine && npm run release` there) once the macOS InDesign
-  bridge exists (see HANDOFF.md). Apple requires a Developer ID (USD 99 a year) and notarization for the app to
+- **Mac.** The same app builds on a Mac (`npm run engine && npm run release` there). The InDesign bridge
+  talks to InDesign through AppleScript (`osascript` > `do script`); the first time, macOS asks the user to let
+  Galley control InDesign (System Settings > Privacy & Security > Automation). Not yet tested on a real Mac. Apple requires a Developer ID (USD 99 a year) and notarization for the app to
   open without warnings and for updates to install.
 - **What updates replace.** Only the program. Each user's work, references, settings and API key live in
   `%APPDATA%\Galley` (Windows) / `~/Library/Application Support/Galley` (Mac) and are kept.
@@ -57,3 +58,15 @@ arrive by themselves.
   `GALLEY_UPDATE_URL=http://127.0.0.1:8800`: it finds B, downloads it and offers the restart.
 - **Logs** for support: `%APPDATA%\Galley\galley-engine.log` (engine) and `%APPDATA%\Galley\logs\main.log`
   (app, written by electron-log).
+
+## The Galley server (accounts and the AI key)
+`server/galley_server.py` holds the company's Google AI key, so it never ships inside the app. Each user gets an
+account key (`gly_...`) that they paste into Settings; the app then sends its AI requests through the server,
+which checks the account and the plan's daily limits (free / pro / team, in `PLANS`).
+```
+GOOGLE_API_KEY=... python server/galley_server.py serve --host 0.0.0.0 --port 8790
+python server/galley_server.py add-user designer@example.com --plan pro      # prints their gly_ key
+python server/galley_server.py list | set-plan EMAIL PLAN | revoke EMAIL
+```
+Host it on any small server behind HTTPS and set its address in the app's settings (`server_url`) or with
+`GALLEY_SERVER`. Without that, the app looks for a server on the same machine (`http://127.0.0.1:8790`).

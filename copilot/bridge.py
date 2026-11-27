@@ -1,7 +1,7 @@
 """InDesign bridge: the only place that talks to InDesign.
 
-Works with any InDesign version that exposes Windows COM scripting (CS3 and later): it sends ExtendScript
-to the running application with DoScript and reads back a JSON string. It never starts InDesign by itself;
+Works with any InDesign version that can be scripted: on Windows through COM (DoScript), on a Mac through
+AppleScript's "do script" (run with osascript). Either way it sends ExtendScript and reads back a JSON string. It never starts InDesign by itself;
 if InDesign is not running, status() says so.
 
 Every call that changes the document runs as ONE undo step ("Galley: ..."), so the designer can press
@@ -10,10 +10,14 @@ Ctrl+Z in InDesign to take back anything the copilot did.
 import json
 import os
 import subprocess
+import sys
+import tempfile
 import threading
 
-import pythoncom
-import win32com.client
+MAC = sys.platform == 'darwin'
+if not MAC:
+    import pythoncom
+    import win32com.client
 
 from . import paths
 
@@ -36,6 +40,11 @@ class InDesignNotRunning(Exception):
 
 def running():
     """True when an InDesign process exists (checked without starting InDesign)."""
+    if MAC:
+        try:
+            return subprocess.run(['pgrep', '-f', 'Adobe InDesign'], capture_output=True, timeout=5).returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
     try:
         # CREATE_NO_WINDOW: the installed engine has no console, so without it every check flashes a window
         out = subprocess.run(['tasklist', '/FI', 'IMAGENAME eq InDesign.exe', '/NH'], capture_output=True, text=True, timeout=5,
@@ -48,17 +57,43 @@ def running():
 def _app():
     if not running():
         raise InDesignNotRunning('InDesign is not open. Open InDesign (any version) and Galley will connect.')
+    if MAC:
+        return None
     pythoncom.CoInitialize()
     return win32com.client.Dispatch('InDesign.Application')
+
+
+def _arg(v):
+    return v if isinstance(v, str) else json.dumps(v)
+
+
+def _run(src, args=None):
+    """run ExtendScript source in InDesign, with script arguments set first; returns what the script returns"""
+    app = _app()
+    if not MAC:
+        for k, v in (args or {}).items():
+            app.ScriptArgs.SetValue(k, _arg(v))
+        return app.DoScript(src, JS)
+    # Mac: the arguments are set by the script itself, from a temporary .jsx file run through AppleScript
+    pre = ''.join('app.scriptArgs.setValue(%s, %s);\n' % (json.dumps(k), json.dumps(_arg(v))) for k, v in (args or {}).items())
+    fd, path = tempfile.mkstemp(suffix='.jsx', prefix='galley_')
+    with os.fdopen(fd, 'w', encoding='utf-8-sig') as f:
+        f.write(pre + src)
+    try:
+        osa = ('with timeout of 3600 seconds\n'
+               'tell application id "com.adobe.InDesign" to do script (POSIX file %s) language javascript\n'
+               'end timeout' % json.dumps(path))
+        r = subprocess.run(['osascript', '-e', osa], capture_output=True, text=True, timeout=3700)
+        if r.returncode:
+            return json.dumps({'error': 'InDesign (AppleScript): ' + (r.stderr.strip() or 'failed')[:300]})
+        return r.stdout.rstrip('\n')
+    finally:
+        os.remove(path)
 
 
 def js(code, undo_name=None, args=None):
     """Run ExtendScript code; the code's last expression must be a value built with __j(...). Returns parsed JSON."""
     with _lock:
-        app = _app()
-        if args:
-            for k, v in args.items():
-                app.ScriptArgs.SetValue(k, v if isinstance(v, str) else json.dumps(v))
         # no dialogs while Galley works (a dialog freezes InDesign until clicked); restored right after
         body = ('(function(){app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;'
                 'try{return (function(){' + code + '})();}catch(e){return __j({error:e.message,line:e.line});}'
@@ -68,7 +103,7 @@ def js(code, undo_name=None, args=None):
                    'UndoModes.ENTIRE_SCRIPT, ' + json.dumps('Galley: ' + undo_name) + '); __r;')
         else:
             src = PRELUDE + '\n' + body + ';'
-        res = app.DoScript(src, JS)
+        res = _run(src, args)
     try:
         return json.loads(res) if isinstance(res, str) and res else res
     except ValueError:
@@ -78,16 +113,17 @@ def js(code, undo_name=None, args=None):
 def run_file(path, args=None, undo_name=None):
     """Run a .jsx file through indesign/run.jsx (errors come back as text instead of a dialog)."""
     args = dict(args or {})
-    result = os.path.join(os.environ.get('TEMP', G), 'galley_copilot_result.txt')
+    result = os.path.join(tempfile.gettempdir(), 'galley_copilot_result.txt')
     if os.path.exists(result):
         os.remove(result)
     # run.jsx opens the single undo step itself when galley_undo is set (always set it: script args persist)
     args.update(galley_target=path, galley_result=result, galley_undo=('Galley: ' + undo_name) if undo_name else '')
     with _lock:
-        app = _app()
-        for k, v in args.items():
-            app.ScriptArgs.SetValue(k, v if isinstance(v, str) else json.dumps(v))
-        app.DoScript(os.path.join(G, 'indesign', 'run.jsx'), JS)
+        runner = os.path.join(G, 'indesign', 'run.jsx')
+        if MAC:
+            _run('$.evalFile(File(%s));' % json.dumps(runner), args)
+        else:
+            _run(runner, args)  # COM DoScript accepts a file path as well as source
     with open(result, encoding='utf-8-sig') as f:
         return f.read()
 
