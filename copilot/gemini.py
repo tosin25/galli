@@ -96,8 +96,15 @@ def generate(key, body, timeout=240):
             return r
         except GeminiError as e:
             last = e
-            if getattr(e, 'code', None) not in (400, 403, 404, 503):
+            code = getattr(e, 'code', None)
+            if code not in (400, 403, 404, 429, 503):
                 raise
+            if code == 429 and n in order:  # this model's allowance is used up (free tier: per model, per day): try it last
+                order.remove(n)
+                order.append(n)
+    if getattr(last, 'code', None) == 429:
+        raise GeminiError('Today\'s free Google AI allowance is used up on every model Galley can use. It resets tomorrow; '
+                          'turning on billing in Google AI Studio removes the limit.')
     raise last
 
 
