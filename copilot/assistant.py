@@ -202,7 +202,6 @@ class GeminiProvider:
         self.g, self.key = gemini, key
 
     def chat(self, tier, history, user_content, on_tool):
-        model = self.g.pick_model(self.key)
         decls = []
         for t in TOOLS:
             d = {'name': t['name'], 'description': t['description']}
@@ -222,7 +221,7 @@ class GeminiProvider:
         for _ in range(10):
             body = {'system_instruction': {'parts': [{'text': SYSTEM}]}, 'contents': contents,
                     'tools': [{'function_declarations': decls}], 'generationConfig': {'temperature': 0.4}}
-            r = self.g._call('POST', '/models/%s:generateContent' % model, self.key, body)
+            r = self.g.generate(self.key, body)
             cand = (r.get('candidates') or [{}])[0]
             mparts = cand.get('content', {}).get('parts', [])
             contents.append({'role': 'model', 'parts': mparts})

@@ -55,7 +55,11 @@ async function startEngine() {
     env: { ...process.env, GALLEY_PORT: String(PORT), GALLEY_VERSION: app.getVersion() },
     windowsHide: true, stdio: 'ignore',
   });
-  engine.on('exit', (code) => { log.warn('engine exited', code); engine = null; });
+  engine.on('exit', (code) => {
+    log.warn('engine exited', code); engine = null;
+    // the engine should never stop while Galley runs: start it again (the window reconnects by itself)
+    if (!quitting) setTimeout(() => { if (!quitting) startEngine(); }, 2000);
+  });
   for (let i = 0; i < 120; i++) {           // up to 30 s on a slow first start
     if (await ping()) return true;
     await new Promise((r) => setTimeout(r, 250));

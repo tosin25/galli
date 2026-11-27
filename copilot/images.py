@@ -79,10 +79,14 @@ def _public(s):
 def _image_model(key):
     models = gemini._call('GET', '/models?pageSize=200', key).get('models', [])
     names = [m['name'].split('/', 1)[1] for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
-    imgs = [n for n in names if 'image' in n and 'imagen' not in n]
-    if not imgs:
+    found = []
+    for n in names:  # plain "gemini-<version>-flash-image" models, newest stable first
+        m = re.fullmatch(r'gemini-(\d+(?:\.\d+)?)-flash-image(-preview)?', n)
+        if m:
+            found.append((not m.group(2), tuple(int(x) for x in m.group(1).split('.')), n))
+    if not found:
         raise gemini.GeminiError('This Google AI key has no image model (image generation may need billing on the Google account).')
-    return sorted(imgs, key=lambda n: (('flash' in n) * 10 + ('preview' not in n) * 5), reverse=True)[0]
+    return max(found)[2]
 
 
 def generate(ids, descriptions=None, ref_paths=None, palette=None):

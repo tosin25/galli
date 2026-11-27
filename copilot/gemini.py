@@ -8,6 +8,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import urllib.error
 import urllib.request
 
@@ -34,46 +35,70 @@ def _call(method, path, key, body=None, timeout=180):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
-        raw = e.read().decode('utf-8', 'replace')
-        detail = raw[:400]
-        if account:
-            try:
-                msg = json.loads(raw)['error']['message']
-            except (ValueError, KeyError, TypeError):
-                msg = 'Galley server error %s.' % e.code
-            raise GeminiError(msg) from e
-        if e.code in (401, 403):
-            raise GeminiError('The Google AI key was refused. Check it in Settings.') from e
-        if e.code == 429:
-            raise GeminiError('The free Google AI limit was reached. Wait a minute and try again.') from e
-        raise GeminiError('Google AI error %s: %s' % (e.code, detail)) from e
+        raise _http_error(e, account) from e
     except urllib.error.URLError as e:
         raise GeminiError('Cannot reach the Galley server.' if account else 'Cannot reach Google AI. Check the internet connection.') from e
+    except (TimeoutError, OSError) as e:  # a slow answer: say so instead of crashing
+        raise GeminiError('The AI service took too long to answer. Try again.') from e
+
+
+def _http_error(e, account):
+    """a friendly GeminiError for an HTTP error, carrying its code"""
+    raw = e.read().decode('utf-8', 'replace')
+    if account:
+        try:
+            msg = json.loads(raw)['error']['message']
+        except (ValueError, KeyError, TypeError):
+            msg = 'Galley server error %s.' % e.code
+    elif e.code in (401, 403):
+        msg = 'The Google AI key was refused. Check it in Settings.'
+    elif e.code == 429:
+        msg = 'The free Google AI limit was reached. Wait a minute and try again.'
+    elif e.code == 503:
+        msg = 'Google AI is busy right now. Try again in a minute.'
+    else:
+        msg = 'Google AI error %s: %s' % (e.code, raw[:400])
+    err = GeminiError(msg)
+    err.code = e.code
+    return err
+
+
+def models(key):
+    """usable chat models for this key, best first (cached): plain "gemini-<version>-flash" models, newest first,
+    then Google's own alias; never special-purpose ones (image, speech, previews of other products)"""
+    if key in _model_cache:
+        return _model_cache[key]
+    names = {m['name'].split('/', 1)[1] for m in _call('GET', '/models?pageSize=200', key).get('models', [])
+             if 'generateContent' in m.get('supportedGenerationMethods', [])}
+    plain = [(tuple(int(x) for x in m.group(1).split('.')), n) for n in names for m in [re.fullmatch(r'gemini-(\d+(?:\.\d+)?)-flash', n)] if m]
+    order = list(dict.fromkeys([n for _, n in sorted(plain, reverse=True)] + [n for n in ('gemini-flash-latest',) if n in names]))
+    if not order:
+        raise GeminiError('No usable Google AI model for this key.')
+    _model_cache[key] = order
+    return order
 
 
 def pick_model(key):
-    """a current multimodal 'flash' model this key may use (cached)"""
-    if key in _model_cache:
-        return _model_cache[key]
-    models = _call('GET', '/models?pageSize=200', key).get('models', [])
-    ok = [m for m in models if 'generateContent' in m.get('supportedGenerationMethods', [])]
-    names = [m['name'].split('/', 1)[1] for m in ok]
+    return models(key)[0]
 
-    def score(n):
-        s = 0
-        if 'flash' in n:
-            s += 100
-        if 'image' in n or 'tts' in n or 'live' in n or 'embedding' in n or 'lite' in n or 'thinking' in n:
-            s -= 200  # special-purpose variants
-        if 'preview' in n or 'exp' in n:
-            s -= 20
-        digits = [int(x) for x in __import__('re').findall(r'\d+', n)[:2]]
-        return s + (digits[0] * 10 + (digits[1] if len(digits) > 1 else 0) if digits else 0)
-    if not names:
-        raise GeminiError('No usable Google AI model for this key.')
-    best = max(names, key=score)
-    _model_cache[key] = best
-    return best
+
+def generate(key, body, timeout=240):
+    """generateContent on the best model this key can use; a model that refuses (not open to the key, busy) is
+    skipped and the one that works is remembered. A slow answer is waited for, not retried on another model."""
+    order = models(key)
+    last = None
+    for n in list(order)[:5]:
+        try:
+            r = _call('POST', '/models/%s:generateContent' % n, key, body, timeout=timeout)
+            if order[0] != n:  # remember the one that works
+                order.remove(n)
+                order.insert(0, n)
+            return r
+        except GeminiError as e:
+            last = e
+            if getattr(e, 'code', None) not in (400, 403, 404, 503):
+                raise
+    raise last
 
 
 def image_part(path):
@@ -84,11 +109,10 @@ def image_part(path):
 
 def generate_json(key, system, parts, temperature=1.0):
     """one request that must answer with JSON; returns the parsed object"""
-    model = pick_model(key)
     body = {'system_instruction': {'parts': [{'text': system}]},
             'contents': [{'role': 'user', 'parts': parts}],
             'generationConfig': {'temperature': temperature, 'responseMimeType': 'application/json'}}
-    r = _call('POST', '/models/%s:generateContent' % model, key, body)
+    r = generate(key, body)
     cands = r.get('candidates') or []
     if not cands:
         raise GeminiError('Google AI returned nothing (%s).' % (r.get('promptFeedback') or 'no reason given'))
