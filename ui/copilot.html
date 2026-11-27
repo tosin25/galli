@@ -186,6 +186,7 @@ function renderSuggest() {
   if (c && !picked.size) ideas.push(['Add reference pins', () => $('#fPins').click()]);
   if (c) ideas.push(['Drafts in built-in looks', () => makeDrafts(['bright', 'classic', 'modern'])]);
   if (ST.docs) ideas.push(['Check this document', check]);
+  if (c) ideas.push(['Pictures for this chapter', pictures]);
   if (c && ST.docs && ST.suggestion) ideas.push(['Continue in my styles', continueFlow]);
   $('#suggest').innerHTML = '';
   ideas.slice(0, 4).forEach(([t, fn]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = fn; $('#suggest').appendChild(b); });
@@ -264,6 +265,43 @@ async function openDraft(id, btn) {
   poll();
 }
 
+// ---------- pictures: find the slots in the manuscript, generate, place
+async function pictures() {
+  say('user', 'Pictures for this chapter', { text: true });
+  const r = await api('images/plan', {}).catch(e => ({ error: String(e) }));
+  if (r.error) { say('bot err', r.error, { text: true }); return; }
+  showPictures(r.slots);
+}
+function showPictures(slots, errors) {
+  if (!slots.length) { say('bot', 'I found no picture notes in this manuscript. Write lines like <b>[Picture: a girl counting 5 mangoes]</b> where a picture should go and I’ll make and place them.'); return; }
+  const body = say('bot', `<div class="card"><h4>${slots.length} picture${slots.length > 1 ? 's' : ''} in the manuscript</h4>
+    <div class="muted small" style="margin-bottom:6px">Edit any description, untick what you’ll draw yourself, then make them. AI pictures need a person’s OK before print.</div>
+    ${slots.map(s => `<div class="pic" style="display:flex;gap:8px;margin:6px 0;align-items:flex-start">
+      <input type="checkbox" data-id="${esc(s.id)}" ${s.url || !s.description ? '' : 'checked'} style="margin-top:4px">
+      <div style="flex:1"><textarea data-d="${esc(s.id)}" rows="2" placeholder="The note says: ${esc(s.placeholder.slice(0, 60))}. Describe the picture." style="width:100%;font:inherit;font-size:12.5px">${esc(s.description)}</textarea>
+      ${s.url ? `<img src="${s.url}?t=${Date.now()}" style="width:100%;border-radius:6px;margin-top:4px;cursor:zoom-in">` : ''}</div></div>`).join('')}
+    ${(errors || []).length ? `<div class="bad small">${errors.map(esc).join('<br>')}</div>` : ''}
+    <div class="row" style="margin-top:6px"><button data-gen>Make the ticked pictures</button>${slots.some(s => s.url) && ST.docs ? '<button class="quiet" data-place>Place them in InDesign</button>' : ''}</div></div>`);
+  body.querySelectorAll('img').forEach(i => i.onclick = () => { $('#lb img').src = i.src; $('#lb').classList.add('on'); });
+  body.querySelectorAll('textarea[data-d]').forEach(t => t.oninput = () => { body.querySelector(`input[data-id="${t.dataset.d}"]`).checked = !!t.value.trim(); });
+  body.querySelector('[data-gen]').onclick = async () => {
+    const ids = [...body.querySelectorAll('input[data-id]:checked')].map(c => c.dataset.id);
+    if (!ids.length) return;
+    const descriptions = {}; body.querySelectorAll('textarea[data-d]').forEach(t => descriptions[t.dataset.d] = t.value);
+    const w = working(`Drawing ${ids.length} picture${ids.length > 1 ? 's' : ''}…`);
+    const r = await api('images/generate', { ids, descriptions, refs: [...picked] }).catch(e => ({ error: String(e) }));
+    done(w);
+    if (r.error) { say('bot err', r.error, { text: true }); if (/key/i.test(r.error)) $('#settings').classList.add('on'); return; }
+    showPictures(r.slots, r.errors);
+  };
+  const pl = body.querySelector('[data-place]');
+  if (pl) pl.onclick = async () => {
+    const w = working('Placing pictures where the notes are…'); const r = await api('images/place', {}); done(w);
+    say(r.ok ? 'bot' : 'bot err', r.ok ? `Placed ${r.placed.length} picture${r.placed.length > 1 ? 's' : ''}${r.not_found.length ? `; couldn’t find the note for ${esc(r.not_found.join(', '))}` : ''}. Ctrl+Z in InDesign undoes it.` : esc(r.error || 'Could not find the picture notes in this document.'));
+    poll();
+  };
+}
+
 // ---------- check and continue
 async function check() {
   say('user', 'Check this document', { text: true });
@@ -313,6 +351,7 @@ async function send(text) {
   const pick = low.match(/^(?:use |open |pick |number |go with )?(?:design |draft |no\.? ?|#)?([1-4])\.?$/);
   if (pick && DRAFTS[pick[1] - 1]) { say('user', text, { text: true }); return openDraft(DRAFTS[pick[1] - 1].id); }
   if (/^check( (this|the) (document|doc|book))?\.?$/.test(low)) return check();
+  if (/^(pictures|images|illustrations)\b/.test(low) && STATE.content) return pictures();
   if (/^(brainstorm|ideas|3 ideas|design ideas)/.test(low) && STATE.content && picked.size) return brainstorm();
   say('user', text, { text: true });
   const w = working('Thinking…');

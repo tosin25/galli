@@ -8,7 +8,7 @@ import re
 import sys
 import time
 
-from . import assistant, brainstorm, bridge, drafts, mapping, paths, settings
+from . import assistant, brainstorm, bridge, drafts, images, mapping, paths, settings
 
 sys.path.insert(0, os.path.join(paths.RES, 'ingest'))
 import ingest  # noqa: E402
@@ -98,6 +98,15 @@ def post(path, q, body, filename):
             refs = [os.path.join(BOARD, os.path.basename(n)) for n in data.get('refs', []) if os.path.isfile(os.path.join(BOARD, os.path.basename(n)))]
             r = brainstorm.run(refs)
             return (400 if r.get('error') and not r.get('designs') else 200), r
+        if path == 'images/plan':
+            r = images.plan()
+            return (400 if r.get('error') else 200), r
+        if path == 'images/generate':
+            refs = [os.path.join(BOARD, os.path.basename(n)) for n in data.get('refs', []) if os.path.isfile(os.path.join(BOARD, os.path.basename(n)))]
+            r = images.generate(data.get('ids') or [], data.get('descriptions'), refs)
+            return (400 if r.get('error') else 200), r
+        if path == 'images/place':
+            return 200, images.place(data.get('ids'))
         if path == 'drafts/open':
             return 200, drafts.open_draft(data.get('id', ''))
         if path == 'apply_all':
