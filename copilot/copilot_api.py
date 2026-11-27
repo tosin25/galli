@@ -8,7 +8,7 @@ import re
 import sys
 import time
 
-from . import assistant, bridge, mapping, paths, settings
+from . import assistant, bridge, drafts, mapping, paths, settings
 
 sys.path.insert(0, os.path.join(paths.RES, 'ingest'))
 import ingest  # noqa: E402
@@ -59,6 +59,8 @@ def get(path, q):
             st['suggestion'] = mapping.suggest(st.get('paragraphStyles', []), st.get('characterStyles', []), saved)
             st['savedMapping'] = saved
         return 200, st
+    if path == 'drafts':
+        return 200, drafts.state()
     if path == 'state':
         return 200, {'content': _content_summary(), 'board': _board(), 'settings': settings.public(), 'models': assistant.public_models(),
                      'version': paths.version(), 'frozen': paths.FROZEN}
@@ -89,6 +91,11 @@ def post(path, q, body, filename):
             if res.get('ok'):
                 res['qa'] = bridge.check_document()
             return 200, res
+        if path == 'drafts':
+            r = drafts.start(data.get('styles') or ['bright', 'classic', 'modern'])
+            return (400 if r.get('error') else 200), r
+        if path == 'drafts/open':
+            return 200, drafts.open_draft(data.get('id', ''))
         if path == 'apply_all':
             return 200, bridge.redefine_style_from_selection()
         if path == 'restyle':

@@ -81,6 +81,11 @@
   .ref .x { position: absolute; top: 2px; right: 2px; background: #000a; color: #fff; border-radius: 4px; padding: 0 5px; font-size: 11px; display: none; }
   .ref:hover .x { display: block; }
   .links a { color: var(--accent); word-break: break-all; }
+  .draft { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+  .draft .pages { display: flex; gap: 6px; overflow-x: auto; margin: 8px 0; padding-bottom: 2px; }
+  .draft .pages img { height: 150px; border: 1px solid var(--line); border-radius: 2px; cursor: zoom-in; background: #fff; }
+  .lb { position: fixed; inset: 0; background: #000c; display: none; align-items: center; justify-content: center; z-index: 9; cursor: zoom-out; padding: 10px; }
+  .lb.on { display: flex; } .lb img { max-width: 100%; max-height: 100%; background: #fff; }
   .modal { position: fixed; inset: 0; background: #0008; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
   .modal.on { display: flex; }
   .modal .card { width: 100%; max-width: 360px; }
@@ -100,7 +105,7 @@
   <div class="upd" id="upd" hidden><span id="updText"></span><button id="updBtn" hidden>Restart to update</button></div>
   <div class="sel" id="sel" hidden><span id="selText"></span><button id="applyAll" class="ghost" title="Make this paragraph's look the style, everywhere">Apply look to all</button></div>
   <nav>
-    <button class="on" data-tab="assist">Assist</button><button data-tab="check">Check</button><button data-tab="continue">Continue</button><button data-tab="refs">References</button>
+    <button class="on" data-tab="assist">Assist</button><button data-tab="check">Check</button><button data-tab="continue">Continue</button><button data-tab="refs">References</button><button data-tab="design">Design</button>
   </nav>
 </header>
 <main>
@@ -147,6 +152,18 @@
     </div>
   </section>
 
+  <section class="tab" id="design">
+    <div class="card">
+      <h3>Design drafts</h3>
+      <p class="muted small" style="margin:0 0 8px">Galley lays out the first pages of your manuscript in 3 different designs. Pick the one you like and it opens in InDesign as a full chapter.</p>
+      <div class="small" id="dsMs"></div>
+      <div class="small" id="dsPins" style="margin:4px 0 10px"></div>
+      <button id="makeDrafts">Make 3 drafts</button>
+      <div id="dsJob" class="small" style="margin-top:8px"></div>
+    </div>
+    <div id="drafts"></div>
+  </section>
+
   <section class="tab" id="refs">
     <div class="card">
       <h3>Reference board</h3>
@@ -163,6 +180,7 @@
   </section>
 </main>
 
+<div class="lb" id="lb"><img alt=""></div>
 <div class="modal" id="settings"><div class="card">
   <h3>Settings</h3>
   <p class="small muted" style="margin:0 0 8px">Your key stays on this computer (in your user profile, not in the project).</p>
@@ -295,6 +313,41 @@ $('#flow').onclick = async () => {
     <div class="muted" style="margin-top:4px">Undo everything: Edit › Undo “Galley: flow manuscript” (Ctrl+Z).</div>`;
   poll();
 };
+
+// ---------- Design drafts
+let draftPoll = null;
+function renderDesign() {
+  const c = STATE.content;
+  $('#dsMs').innerHTML = c ? `Manuscript: <b>${esc(c.meta.chapter_title)}</b> <span class="muted">· ${esc(c.meta.source || '')}</span>`
+    : '<span class="fail">Choose a manuscript first in the Continue tab.</span>';
+  $('#dsPins').innerHTML = picked.size ? `${picked.size} reference${picked.size > 1 ? 's' : ''} selected <span class="muted">(used once the AI designer is switched on)</span>`
+    : '<span class="muted">No references selected. For now the 3 drafts use Galley\'s built-in looks.</span>';
+  $('#makeDrafts').disabled = !c || !(ST.connected && !ST.busy);
+}
+function renderDrafts(d) {
+  const j = d.job;
+  $('#dsJob').innerHTML = j.running ? `<span class="spin"></span> ${esc(j.step)}… InDesign will be busy for a minute or two.` : (j.error ? `<span class="fail">${esc(j.error)}</span>` : '');
+  $('#makeDrafts').disabled = j.running;
+  $('#drafts').innerHTML = d.drafts.map(x => `<div class="draft">
+      <div class="row"><b style="flex:1">${esc(x.name)}</b><span class="muted small">${esc(x.trim)} · ${x.pages} pages</span></div>
+      <div class="muted small">${esc(x.description)}</div>
+      <div class="pages">${x.previews.map(u => `<img src="${u}?t=${x.built}" alt="page preview">`).join('')}</div>
+      <button data-open="${esc(x.id)}">Use this design: open in InDesign</button></div>`).join('');
+  document.querySelectorAll('.draft .pages img').forEach(i => i.onclick = () => { $('#lb img').src = i.src; $('#lb').classList.add('on'); });
+  document.querySelectorAll('[data-open]').forEach(b => b.onclick = async () => {
+    b.disabled = true; b.textContent = 'Opening in InDesign…';
+    const r = await api('drafts/open', { id: b.dataset.open });
+    b.disabled = false; b.textContent = r.ok ? 'Opened in InDesign ✓' : (r.error || 'Could not open');
+  });
+  if (j.running && !draftPoll) draftPoll = setInterval(async () => { const r = await api('drafts'); renderDrafts(r); if (!r.job.running) { clearInterval(draftPoll); draftPoll = null; } }, 2000);
+}
+$('#lb').onclick = () => $('#lb').classList.remove('on');
+$('#makeDrafts').onclick = async () => {
+  const r = await api('drafts', { styles: ['bright', 'classic', 'modern'] });
+  if (r.error) { $('#dsJob').innerHTML = `<span class="fail">${esc(r.error)}</span>`; return; }
+  renderDrafts(await api('drafts'));
+};
+document.querySelector('nav button[data-tab="design"]').addEventListener('click', async () => { renderDesign(); renderDrafts(await api('drafts')); });
 
 // ---------- References
 function renderBoard() {

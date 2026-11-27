@@ -7,7 +7,8 @@
   function arg(k, d) { return SA.isDefined(k) && SA.getValue(k) != '' ? SA.getValue(k) : d; }
   app.scriptPreferences.userInteractionLevel = UserInteractionLevels.NEVER_INTERACT;
   var docPath = arg('galley_doc', ''), doc = docPath ? app.open(File(docPath)) : app.activeDocument;
-  var OUT = Folder(arg('galley_out', doc.filePath)), exportIt = arg('galley_export', '1') == '1';
+  // an unsaved document has no folder: only ask for one when no output folder was given
+  var OUT = Folder(SA.isDefined('galley_out') && SA.getValue('galley_out') != '' ? SA.getValue('galley_out') : doc.filePath), exportIt = arg('galley_export', '1') == '1';
   // measure in mm through the script's own units: the document and its undo history are never touched
   var SMU = app.scriptPreferences.measurementUnit; app.scriptPreferences.measurementUnit = MeasurementUnits.MILLIMETERS;
   doc.recompose();
