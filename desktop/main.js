@@ -10,7 +10,7 @@ const { autoUpdater } = require('electron-updater');
 
 const PORT = Number(process.env.GALLEY_PORT || 8765);
 const URL = `http://127.0.0.1:${PORT}`;
-const WIDTH = 440;
+const WIDTH = 400, HEIGHT = 660, MARGIN = 16;
 log.transports.file.level = 'info';
 autoUpdater.logger = log;
 
@@ -66,9 +66,10 @@ async function startEngine() {
 function stopEngine() { if (engine) { try { engine.kill(); } catch (e) { /* already gone */ } engine = null; } }
 
 // ---------------------------------------------------------------- window
+// a compact panel in the bottom-right corner, out of the way of InDesign's own panels
 function dock() {
-  const wa = screen.getPrimaryDisplay().workArea;
-  win.setBounds({ x: wa.x + wa.width - WIDTH, y: wa.y, width: WIDTH, height: wa.height });
+  const wa = screen.getPrimaryDisplay().workArea, h = Math.min(HEIGHT, wa.height - 2 * MARGIN);
+  win.setBounds({ x: wa.x + wa.width - WIDTH - MARGIN, y: wa.y + wa.height - h - MARGIN, width: WIDTH, height: h });
 }
 
 function createWindow() {
@@ -137,7 +138,7 @@ function buildTray() {
   }
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show Galley', click: showWindow },
-    { label: 'Dock to the right', click: () => { dock(); showWindow(); } },
+    { label: 'Move to the corner', click: () => { dock(); showWindow(); } },
     { label: 'Keep on top of InDesign', type: 'checkbox', checked: pinned, click: (m) => setPinned(m.checked) },
     { label: 'Show when InDesign opens', type: 'checkbox', checked: prefs.followInDesign, click: (m) => { prefs.followInDesign = m.checked; savePrefs(); } },
     { label: 'Start Galley with my computer', type: 'checkbox', checked: prefs.startWithSystem, visible: app.isPackaged,
