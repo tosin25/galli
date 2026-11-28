@@ -38,4 +38,5 @@ def public():
     return {'model': {'claude-opus-5-5': 'galley', 'claude-sonnet-5-5': 'galley-fast', 'claude-haiku-5-5': 'galley-fast', 'claude-fable-5-2': 'galley-pro'}.get(s.get('model', 'galley'), s.get('model', 'galley')), 'has_key': bool(k or os.environ.get('ANTHROPIC_API_KEY')),
             'key_hint': ('…' + k[-4:]) if k else ('from environment' if os.environ.get('ANTHROPIC_API_KEY') else ''),
             'pin_on_top': s.get('pin_on_top', True),
-            'has_gemini': bool(s.get('gemini_api_key')), 'gemini_hint': ('…' + s['gemini_api_key'][-4:]) if s.get('gemini_api_key') else ''}
+            'has_gemini': bool(s.get('gemini_api_key')), 'gemini_hint': ('…' + s['gemini_api_key'][-4:]) if s.get('gemini_api_key') else '',
+            'has_openrouter': bool(s.get('openrouter_api_key')), 'openrouter_hint': ('…' + s['openrouter_api_key'][-4:]) if s.get('openrouter_api_key') else ''}

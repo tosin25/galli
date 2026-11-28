@@ -149,9 +149,9 @@ def manuscript_brief(content_path):
 
 def run(ref_paths):
     """pins + current manuscript -> 3 specs saved as style/idea-1..3 -> drafts started. Returns the designs."""
-    key = settings.get('gemini_api_key')
-    if not key:
-        return {'error': 'Add the free Google AI key in Settings first.'}
+    okey, key = settings.get('openrouter_api_key'), settings.get('gemini_api_key')
+    if not (okey or key):
+        return {'error': 'Add an AI key in Settings first (OpenRouter or Google).'}
     content = os.path.join(paths.WORK, 'content.json')
     if not os.path.exists(content):
         return {'error': 'Choose a manuscript first.'}
@@ -163,10 +163,18 @@ def run(ref_paths):
     parts = [gemini.image_part(p) for p in ref_paths[:8]]
     parts.append({'text': 'Installed fonts (family: styles): ' + json.dumps(fonts) + '\n\nManuscript:\n' + manuscript_brief(content)})
     t0 = time.time()
-    try:
-        answer = gemini.generate_json(key, SYSTEM, parts)
-    except gemini.GeminiError as e:
-        return {'error': str(e)}
+    from . import openrouter
+    answer, reasons = None, []
+    for kind, k in (('or', okey), ('g', key)):  # Claude through OpenRouter first, then Google
+        if not k:
+            continue
+        try:
+            answer = openrouter.generate_json(k, SYSTEM, parts) if kind == 'or' else gemini.generate_json(key, SYSTEM, parts)
+            break
+        except (openrouter.OpenRouterError, gemini.GeminiError) as e:
+            reasons.append(str(e))
+    if answer is None:
+        return {'error': '; '.join(reasons)}
     designs = (answer.get('designs') or [])[:3]
     if not designs:
         return {'error': 'The AI did not propose any designs. Try again, or with different pins.'}

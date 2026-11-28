@@ -163,6 +163,8 @@ def post(path, q, body, filename):
                 vals['anthropic_api_key'] = data['api_key'].strip() or None
             if 'gemini_key' in data:
                 vals['gemini_api_key'] = data['gemini_key'].strip() or None
+            if 'openrouter_key' in data:
+                vals['openrouter_api_key'] = data['openrouter_key'].strip() or None
             for k in ('model', 'pin_on_top'):
                 if k in data:
                     vals[k] = data[k]

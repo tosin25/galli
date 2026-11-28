@@ -132,8 +132,11 @@
   <p class="small muted" style="margin:0">Keys stay on this computer, in your user profile.</p>
   <label>Galley account key or Google AI key: for design ideas, chat and pictures <span id="gemHint"></span></label>
   <input type="password" id="gemKey" placeholder="gly_… from Galley, or a key from aistudio.google.com">
-  <label>Galley AI key <span id="keyHint"></span></label>
-  <input type="password" id="apiKey" placeholder="Paste the Galley AI key">
+  <label>OpenRouter key: prepaid, for chat, fixes and design ideas <span id="orHint"></span></label>
+  <input type="password" id="orKey" placeholder="sk-or-… from openrouter.ai/keys">
+  <label>Main AI key <span id="keyHint"></span></label>
+  <input type="password" id="apiKey" placeholder="sk-ant-… (used first when it works)">
+  <p class="small muted" style="margin:6px 0 0">Galley uses the main key first, then OpenRouter, then Google, and tells you when it switched and why.</p>
   <div class="row" style="margin-top:12px"><button id="saveSettings">Save</button><span class="small muted" id="appVersion"></span></div>
 </div></div>
 
@@ -398,12 +401,12 @@ $('#lb').onclick = () => $('#lb').classList.remove('on');
 $('#gear').onclick = () => $('#settings').classList.add('on');
 $('#closeSettings').onclick = () => $('#settings').classList.remove('on');
 $('#saveSettings').onclick = async () => {
-  const b = {}; if ($('#apiKey').value) b.api_key = $('#apiKey').value; if ($('#gemKey').value) b.gemini_key = $('#gemKey').value;
-  applySettings(await api('settings', b)); $('#apiKey').value = ''; $('#gemKey').value = ''; $('#settings').classList.remove('on');
+  const b = {}; if ($('#apiKey').value) b.api_key = $('#apiKey').value; if ($('#gemKey').value) b.gemini_key = $('#gemKey').value; if ($('#orKey').value) b.openrouter_key = $('#orKey').value;
+  applySettings(await api('settings', b)); $('#apiKey').value = ''; $('#gemKey').value = ''; $('#orKey').value = ''; $('#settings').classList.remove('on');
   say('bot', 'Saved.', { text: true });
 };
 $('#model').onchange = () => api('settings', { model: $('#model').value });
-function applySettings(s) { $('#keyHint').textContent = s.has_key ? `· saved ${s.key_hint}` : '· not set'; $('#gemHint').textContent = s.has_gemini ? `· saved ${s.gemini_hint}` : '· not set'; }
+function applySettings(s) { $('#keyHint').textContent = s.has_key ? `· saved ${s.key_hint}` : '· not set'; $('#gemHint').textContent = s.has_gemini ? `· saved ${s.gemini_hint}` : '· not set'; $('#orHint').textContent = s.has_openrouter ? `· saved ${s.openrouter_hint}` : '· not set'; }
 
 // ---------- desktop app: version and updates
 function showUpdate(u) {

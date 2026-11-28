@@ -1,7 +1,7 @@
 {
   "name": "galley",
   "productName": "Galley",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "Galley: a layout copilot that sits beside InDesign. Manuscript in, book out.",
   "author": "Galley",
   "license": "UNLICENSED",

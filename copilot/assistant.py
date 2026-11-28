@@ -178,6 +178,56 @@ class AnthropicProvider:
         return {'text': 'I stopped after many steps. Tell me what to do next.', 'steps': steps}
 
 
+class OpenRouterProvider:
+    """Claude (and others) through OpenRouter's OpenAI-style API, with the same tools and the same visible steps."""
+
+    def __init__(self, key):
+        from . import openrouter
+        self.o, self.key = openrouter, key
+
+    def chat(self, model, history, user_content, on_tool):
+        tools = [{'type': 'function', 'function': {'name': t['name'], 'description': t['description'], 'parameters': t['input_schema']}} for t in TOOLS]
+        content = []
+        for blk in user_content:
+            if blk['type'] == 'image':
+                content.append({'type': 'image_url', 'image_url': {'url': 'data:%s;base64,%s' % (blk['source']['media_type'], blk['source']['data'])}})
+            else:
+                content.append({'type': 'text', 'text': blk['text']})
+        messages = [{'role': 'system', 'content': SYSTEM}] + [{'role': h['role'], 'content': h['content']} for h in history]
+        messages.append({'role': 'user', 'content': content})
+        models = self.o.TIER.get(model, self.o.VISION)
+        steps = []
+        for _ in range(12):
+            r = self.o.complete(self.key, models, {'messages': messages, 'tools': tools, 'max_tokens': 8000})
+            choice = r['choices'][0]
+            msg = choice['message']
+            models = [r.get('model') or models[0]]  # keep the model that answered for the rest of this message
+            calls = msg.get('tool_calls') or []
+            messages.append({'role': 'assistant', 'content': msg.get('content') or '', **({'tool_calls': calls} if calls else {})})
+            if not calls:
+                text = (msg.get('content') or '').strip()
+                if choice.get('finish_reason') == 'length':
+                    text += '\n\n(The answer was cut off. Ask me to continue.)'
+                return {'text': text or '(no answer)', 'steps': steps}
+            for c in calls:
+                name = c['function']['name']
+                try:
+                    args = json.loads(c['function'].get('arguments') or '{}')
+                except ValueError:
+                    args = {}
+                on_tool(name, args)
+                try:
+                    out = run_tool(name, args)
+                    err = isinstance(out, dict) and (out.get('error') or out.get('ok') is False)
+                except bridge.InDesignNotRunning as e:
+                    out, err = {'error': str(e)}, True
+                except Exception as e:  # noqa: BLE001 - tool failures go back to the model
+                    out, err = {'error': '%s: %s' % (type(e).__name__, e)}, True
+                steps.append({'tool': name, 'input': args, 'ok': not err})
+                messages.append({'role': 'tool', 'tool_call_id': c['id'], 'content': json.dumps(out, default=str)[:20000]})
+        return {'text': 'I stopped after many steps. Tell me what to do next.', 'steps': steps}
+
+
 def _gemini_schema(sch):
     """our JSON-Schema tool inputs -> the OpenAPI subset Gemini accepts (free-form objects become JSON text)"""
     props = {}
@@ -258,38 +308,55 @@ def chat(model_id, history, text, ref_paths, on_tool=lambda n, i: None):
         if blk:
             content.append(blk)
     content.append({'type': 'text', 'text': text})
+    # keys in order of preference: Claude direct, Claude through OpenRouter, Google. If one account refuses
+    # (identity check, no credit, limit reached) the next one answers and the reply says why.
+    chain = []
     key = settings.get('anthropic_api_key') or os.environ.get('ANTHROPIC_API_KEY', '')
+    if key:
+        chain.append(('Claude', lambda: AnthropicProvider(key).chat(model['model'], history, content, on_tool)))
+    okey = settings.get('openrouter_api_key')
+    if okey:
+        chain.append(('OpenRouter', lambda: OpenRouterProvider(okey).chat(model['model'], history, content, on_tool)))
     gkey = settings.get('gemini_api_key')
-    if not key and gkey:  # no main AI key yet: use the free Google key (testing)
-        from . import gemini
+    if gkey:
+        chain.append(('Google AI', lambda: GeminiProvider(gkey).chat(model['id'], history, content, on_tool)))
+    if not chain:
+        return {'error': 'Galley needs an AI key to chat. Add one in Settings (gear icon).'}
+    reasons = []
+    for i, (name, run) in enumerate(chain):
         try:
-            return GeminiProvider(gkey).chat(model['id'], history, content, on_tool)
-        except gemini.GeminiError as e:
-            return {'error': str(e)}
+            r = run()
+            if reasons:
+                r['note'] = 'Answered with the backup AI (%s): %s' % (name, '; '.join(reasons))
+            return r
+        except Exception as e:  # noqa: BLE001 - each provider's error becomes plain words
+            msg, account = _explain(name, e)
+            if not account or i == len(chain) - 1:  # a problem with this request, or no backup left: say why
+                return {'error': msg + ('' if not reasons else ' (also: %s)' % '; '.join(reasons))}
+            reasons.append(msg)
+
+
+def _explain(name, e):
+    """(plain-words reason, whether the account itself is the problem so a backup key should be tried)"""
+    from . import gemini, openrouter
+    if isinstance(e, (gemini.GeminiError, openrouter.OpenRouterError)):
+        return str(e), getattr(e, 'code', None) in (400, 401, 402, 403, 429, 503) or 'too long' in str(e)
+    if isinstance(e, bridge.InDesignNotRunning):
+        return str(e), False
     try:
-        provider = AnthropicProvider(key)
-        return provider.chat(model['model'], history, content, on_tool)
-    except Exception as e:  # noqa: BLE001 - map SDK errors to plain advice below
         a = __import__('anthropic')
-        if isinstance(e, a.AuthenticationError) or 'api_key' in str(e).lower() or 'authentication' in str(e).lower():
-            return {'error': 'Galley needs its AI key to chat. Add it in Settings (gear icon).'}
-        if isinstance(e, a.RateLimitError):
-            return {'error': 'Rate limited by the API. Wait a moment and try again.'}
-        if isinstance(e, a.APIConnectionError):
-            return {'error': 'Cannot reach the AI service. Check the internet connection.'}
-        if isinstance(e, a.APIStatusError):
-            try:
-                reason = e.body['error']['message']
-            except (TypeError, KeyError):
-                reason = ''
-            # the account itself is blocked (identity check, no credit): keep working on the Google key if there is one
-            if gkey and e.status_code in (400, 402, 403):
-                from . import gemini
-                try:
-                    r = GeminiProvider(gkey).chat(model['id'], history, content, on_tool)
-                    r['note'] = 'Answered with the backup AI because the main AI account says: %s' % (reason or 'error %s' % e.status_code)
-                    return r
-                except gemini.GeminiError:
-                    pass
-            return {'error': 'The AI service said: %s' % reason if reason else 'The AI service returned an error (%s). Try again in a moment.' % e.status_code}
-        return {'error': '%s: %s' % (type(e).__name__, e)}
+    except ImportError:
+        return '%s: %s' % (type(e).__name__, e), False
+    if isinstance(e, a.AuthenticationError):
+        return 'The Claude key was refused. Check it in Settings.', True
+    if isinstance(e, a.RateLimitError):
+        return 'Claude is rate limited. Wait a moment and try again.', True
+    if isinstance(e, a.APIConnectionError):
+        return 'Cannot reach Claude. Check the internet connection.', True
+    if isinstance(e, a.APIStatusError):
+        try:
+            reason = e.body['error']['message']
+        except (TypeError, KeyError):
+            reason = 'error %s' % e.status_code
+        return '%s said: %s' % (name, reason), e.status_code in (400, 401, 402, 403, 429, 529)
+    return '%s: %s' % (type(e).__name__, e), False
