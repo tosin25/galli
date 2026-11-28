@@ -358,7 +358,7 @@ async function send(text) {
   const r = await api('chat', { text, history, model: $('#model').value, refs: [...picked] }).catch(e => ({ error: String(e) }));
   done(w);
   if (r.error) { say('bot err', r.error, { text: true }); if (/key/i.test(r.error)) $('#settings').classList.add('on'); return; }
-  say('bot', esc(r.text || '(done)') + stepsHtml(r.steps));
+  say('bot', esc(r.text || '(done)') + stepsHtml(r.steps) + (r.note ? `<div class="muted small" style="margin-top:4px">${esc(r.note)}</div>` : ''));
   history.push({ role: 'user', content: text }, { role: 'assistant', content: r.text || '' });
   poll();
 }

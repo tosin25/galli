@@ -278,5 +278,18 @@ def chat(model_id, history, text, ref_paths, on_tool=lambda n, i: None):
         if isinstance(e, a.APIConnectionError):
             return {'error': 'Cannot reach the AI service. Check the internet connection.'}
         if isinstance(e, a.APIStatusError):
-            return {'error': 'The AI service returned an error (%s). Try again in a moment.' % e.status_code}
+            try:
+                reason = e.body['error']['message']
+            except (TypeError, KeyError):
+                reason = ''
+            # the account itself is blocked (identity check, no credit): keep working on the Google key if there is one
+            if gkey and e.status_code in (400, 402, 403):
+                from . import gemini
+                try:
+                    r = GeminiProvider(gkey).chat(model['id'], history, content, on_tool)
+                    r['note'] = 'Answered with the backup AI because the main AI account says: %s' % (reason or 'error %s' % e.status_code)
+                    return r
+                except gemini.GeminiError:
+                    pass
+            return {'error': 'The AI service said: %s' % reason if reason else 'The AI service returned an error (%s). Try again in a moment.' % e.status_code}
         return {'error': '%s: %s' % (type(e).__name__, e)}
